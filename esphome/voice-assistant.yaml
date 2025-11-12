@@ -1,0 +1,249 @@
+# ESPHome Konfiguration für AZ-Touch MOD Voice Assistant
+# Hardware: ESP32 DevKit C + AZ-Touch MOD 2.8" + INMP441
+
+substitutions:
+  name: "jarvis-lite"
+  friendly_name: "Jarvis Voice Assistant"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+# Status LED (optional, use if available on DevKit C)
+status_led:
+  pin: GPIO 2
+
+# ============================================
+# Display Configuration (ILI9341 - SPI)
+# ============================================
+spi:
+  - id: spi_main
+    clk_pin: GPIO18
+    mosi_pin: GPIO23
+    miso_pin: GPIO19
+
+display:
+  - platform: ili9341
+    id: main_display
+    model: TFT 2.4
+    cs_pin: GPIO15
+    dc_pin: GPIO2
+    reset_pin: GPIO4
+    rotation: 0
+    lambda: |-
+      // Display code here
+      it.print(10, 10, id(font_small), "Jarvis Ready");
+
+# Display Backlight (PWM)
+output:
+  - platform: ledc
+    pin: GPIO32
+    id: backlight_pwm
+
+light:
+  - platform: monochromatic
+    output: backlight_pwm
+    name: "${friendly_name} Backlight"
+    id: display_backlight
+    restore_mode: ALWAYS_ON
+    default_transition_length: 250ms
+
+# ============================================
+# Touchscreen Configuration (XPT2046)
+# ============================================
+touchscreen:
+  - platform: xpt2046
+    id: touch_screen
+    cs_pin: GPIO14
+    interrupt_pin: GPIO27
+    update_interval: 50ms
+    threshold: 400
+    calibration:
+      x_min: 220
+      x_max: 3900
+      y_min: 200
+      y_max: 3850
+    on_touch:
+      - lambda: |-
+          ESP_LOGI("touch", "Touch at x=%d, y=%d", (int)touch.x, (int)touch.y);
+
+# ============================================
+# Buzzer Configuration
+# ============================================
+output:
+  - platform: ledc
+    pin: GPIO21
+    id: buzzer_output
+
+rtttl:
+  id: buzzer
+  output: buzzer_output
+  on_finished_playback:
+    - logger.log: "Buzzer finished"
+
+# ============================================
+# I2S Microphone Configuration (INMP441)
+# ============================================
+i2s_audio:
+  - id: i2s_in
+    i2s_lrclk_pin: GPIO25  # WS
+    i2s_bclk_pin: GPIO26   # SCK
+
+microphone:
+  - platform: i2s_audio
+    id: external_microphone
+    i2s_din_pin: GPIO33    # SD
+    adc_type: external
+    pdm: false
+    channel: left
+    bits_per_sample: 32bit
+    i2s_audio_id: i2s_in
+
+# ============================================
+# Voice Assistant Configuration
+# ============================================
+voice_assistant:
+  id: va
+  microphone: external_microphone
+  # speaker: external_speaker  # Optional: Wenn Lautsprecher hinzugefügt wird
+
+  use_wake_word: false  # Später auf true setzen wenn Wake Word trainiert ist
+
+  on_listening:
+    - light.turn_on:
+        id: display_backlight
+        brightness: 100%
+    - rtttl.play: "short:d=4,o=5,b=100:16e6"
+    - lambda: |-
+        ESP_LOGI("voice", "Listening...");
+
+  on_stt_end:
+    - rtttl.play: "short:d=4,o=5,b=100:16e6,16e6"
+    - lambda: |-
+        ESP_LOGI("voice", "Processing...");
+
+  on_tts_start:
+    - lambda: |-
+        ESP_LOGI("voice", "Speaking...");
+
+  on_tts_end:
+    - lambda: |-
+        ESP_LOGI("voice", "Done speaking");
+
+  on_end:
+    - light.turn_on:
+        id: display_backlight
+        brightness: 50%
+    - lambda: |-
+        ESP_LOGI("voice", "Session ended");
+
+  on_error:
+    - rtttl.play: "error:d=4,o=5,b=100:8a4,8a4,8a4"
+    - lambda: |-
+        ESP_LOGE("voice", "Error occurred");
+
+# ============================================
+# Binary Sensors (Touch Buttons)
+# ============================================
+binary_sensor:
+  # Push-to-Talk Button (Beispiel für Touch-Button)
+  - platform: touchscreen
+    name: "${friendly_name} PTT Button"
+    id: ptt_button
+    x_min: 20
+    x_max: 140
+    y_min: 200
+    y_max: 280
+    on_press:
+      - voice_assistant.start:
+      - logger.log: "Push-to-Talk activated"
+    on_release:
+      - voice_assistant.stop:
+      - logger.log: "Push-to-Talk released"
+
+# ============================================
+# Sensors
+# ============================================
+sensor:
+  - platform: wifi_signal
+    name: "${friendly_name} WiFi Signal"
+    update_interval: 60s
+
+  - platform: uptime
+    name: "${friendly_name} Uptime"
+
+# ============================================
+# Text Sensors
+# ============================================
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "${friendly_name} IP Address"
+    ssid:
+      name: "${friendly_name} SSID"
+
+# ============================================
+# Fonts (für Display)
+# ============================================
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 14
+
+  - file: "gfonts://Roboto"
+    id: font_medium
+    size: 20
+
+  - file: "gfonts://Roboto"
+    id: font_large
+    size: 32
+
+# ============================================
+# Colors
+# ============================================
+color:
+  - id: color_white
+    red: 100%
+    green: 100%
+    blue: 100%
+
+  - id: color_black
+    red: 0%
+    green: 0%
+    blue: 0%
+
+  - id: color_blue
+    red: 0%
+    green: 50%
+    blue: 100%
