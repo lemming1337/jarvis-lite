@@ -1,29 +1,72 @@
 # ESPHome Konfiguration für AZ-Touch MOD Voice Assistant
-# Hardware: ESP32 DevKit C + AZ-Touch MOD 2.8" + INMP441
+# Hardware: ESP32 DevKit C + AZ-Touch MOD 2.8" (240x320) + INMP441
+# Basiert auf ESP32-S3-BOX Voice Assistant
 
 substitutions:
   name: "jarvis-lite"
   friendly_name: "Jarvis Voice Assistant"
 
+  # Illustration files (240x320 Portrait - angepasst für AZ-Touch MOD)
+  loading_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/loading_320_240.png
+  idle_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/idle_320_240.png
+  listening_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/listening_320_240.png
+  thinking_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/thinking_320_240.png
+  replying_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/replying_320_240.png
+  error_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/error_320_240.png
+  timer_finished_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/timer_finished_320_240.png
+
+  # Background colors
+  loading_illustration_background_color: "000000"
+  idle_illustration_background_color: "000000"
+  listening_illustration_background_color: "FFFFFF"
+  thinking_illustration_background_color: "FFFFFF"
+  replying_illustration_background_color: "FFFFFF"
+  error_illustration_background_color: "000000"
+
+  # Voice assistant phases
+  voice_assist_idle_phase_id: "1"
+  voice_assist_listening_phase_id: "2"
+  voice_assist_thinking_phase_id: "3"
+  voice_assist_replying_phase_id: "4"
+  voice_assist_not_ready_phase_id: "10"
+  voice_assist_error_phase_id: "11"
+  voice_assist_muted_phase_id: "12"
+  voice_assist_timer_finished_phase_id: "20"
+
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  platformio_options:
-    board_build.flash_mode: dio
+  min_version: 2024.11.0
+  on_boot:
+    priority: 600
+    then:
+      - script.execute: draw_display
+      - delay: 30s
+      - if:
+          condition:
+            lambda: return id(init_in_progress);
+          then:
+            - lambda: id(init_in_progress) = false;
+            - script.execute: draw_display
 
 esp32:
   board: esp32dev
   framework:
     type: arduino
 
-# Enable logging
+# ============================================
+# Connectivity
+# ============================================
 logger:
   level: DEBUG
 
-# Enable Home Assistant API
 api:
   encryption:
     key: !secret api_key
+  on_client_connected:
+    - script.execute: draw_display
+  on_client_disconnected:
+    - script.execute: draw_display
 
 ota:
   - platform: esphome
@@ -32,20 +75,18 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-
-  # Enable fallback hotspot
   ap:
     ssid: "${friendly_name} Fallback"
     password: !secret ap_password
+  on_connect:
+    - script.execute: draw_display
+  on_disconnect:
+    - script.execute: draw_display
 
 captive_portal:
 
-# Status LED (optional, use if available on DevKit C)
-status_led:
-  pin: GPIO 2
-
 # ============================================
-# Display Configuration (ILI9341 - SPI)
+# SPI Bus (Display & Touch)
 # ============================================
 spi:
   - id: spi_main
@@ -53,6 +94,9 @@ spi:
     mosi_pin: GPIO23
     miso_pin: GPIO19
 
+# ============================================
+# Display Configuration (ILI9341 - 240x320)
+# ============================================
 display:
   - platform: ili9341
     id: main_display
@@ -60,27 +104,90 @@ display:
     cs_pin: GPIO15
     dc_pin: GPIO2
     reset_pin: GPIO4
-    rotation: 0
-    lambda: |-
-      // Display code here
-      it.print(10, 10, id(font_small), "Jarvis Ready");
+    rotation: 0  # Portrait Mode (240x320)
+    update_interval: never
+    pages:
+      - id: idle_page
+        lambda: |-
+          it.fill(id(idle_color));
+          it.image((it.get_width() / 2), (it.get_height() / 2), id(casita_idle), ImageAlign::CENTER);
+          id(draw_timer_timeline).execute();
+          id(draw_active_timer_widget).execute();
+      - id: listening_page
+        lambda: |-
+          it.fill(id(listening_color));
+          it.image((it.get_width() / 2), (it.get_height() / 2), id(casita_listening), ImageAlign::CENTER);
+          id(draw_timer_timeline).execute();
+      - id: thinking_page
+        lambda: |-
+          it.fill(id(thinking_color));
+          it.image((it.get_width() / 2), (it.get_height() / 2), id(casita_thinking), ImageAlign::CENTER);
+          // Request text box (angepasst für 240px Breite)
+          it.filled_rectangle(10, 20, 220, 30, Color::WHITE);
+          it.rectangle(10, 20, 220, 30, Color::BLACK);
+          it.printf(15, 25, id(font_request), Color::BLACK, "%s", id(text_request).state.c_str());
+          id(draw_timer_timeline).execute();
+      - id: replying_page
+        lambda: |-
+          it.fill(id(replying_color));
+          it.image((it.get_width() / 2), (it.get_height() / 2), id(casita_replying), ImageAlign::CENTER);
+          // Request text box
+          it.filled_rectangle(10, 20, 220, 30, Color::WHITE);
+          it.rectangle(10, 20, 220, 30, Color::BLACK);
+          // Response text box
+          it.filled_rectangle(10, 270, 220, 30, Color::WHITE);
+          it.rectangle(10, 270, 220, 30, Color::BLACK);
+          it.printf(15, 25, id(font_request), Color::BLACK, "%s", id(text_request).state.c_str());
+          it.printf(15, 275, id(font_response), Color::BLACK, "%s", id(text_response).state.c_str());
+          id(draw_timer_timeline).execute();
+      - id: timer_finished_page
+        lambda: |-
+          it.fill(id(idle_color));
+          it.image((it.get_width() / 2), (it.get_height() / 2), id(casita_timer_finished), ImageAlign::CENTER);
+      - id: error_page
+        lambda: |-
+          it.fill(id(error_color));
+          it.image((it.get_width() / 2), (it.get_height() / 2), id(casita_error), ImageAlign::CENTER);
+      - id: no_ha_page
+        lambda: |-
+          it.fill(Color::BLACK);
+          it.image((it.get_width() / 2), (it.get_height() / 2), id(error_no_ha), ImageAlign::CENTER);
+      - id: no_wifi_page
+        lambda: |-
+          it.fill(Color::BLACK);
+          it.image((it.get_width() / 2), (it.get_height() / 2), id(error_no_wifi), ImageAlign::CENTER);
+      - id: initializing_page
+        lambda: |-
+          it.fill(id(loading_color));
+          it.image((it.get_width() / 2), (it.get_height() / 2), id(casita_initializing), ImageAlign::CENTER);
+      - id: muted_page
+        lambda: |-
+          it.fill(Color::BLACK);
+          it.printf(120, 160, id(font_large), Color::WHITE, TextAlign::CENTER, "MUTED");
+          id(draw_timer_timeline).execute();
+          id(draw_active_timer_widget).execute();
 
 # Display Backlight (PWM)
 output:
   - platform: ledc
     pin: GPIO32
     id: backlight_pwm
+  - platform: ledc
+    pin: GPIO21
+    id: buzzer_output
 
 light:
   - platform: monochromatic
     output: backlight_pwm
-    name: "${friendly_name} Backlight"
+    name: "Screen"
     id: display_backlight
-    restore_mode: ALWAYS_ON
+    icon: "mdi:television"
+    entity_category: config
+    restore_mode: RESTORE_DEFAULT_ON
     default_transition_length: 250ms
 
 # ============================================
-# Touchscreen Configuration (XPT2046)
+# Touchscreen (XPT2046)
 # ============================================
 touchscreen:
   - platform: xpt2046
@@ -94,29 +201,19 @@ touchscreen:
       x_max: 3900
       y_min: 200
       y_max: 3850
-    on_touch:
-      - lambda: |-
-          ESP_LOGI("touch", "Touch at x=%d, y=%d", (int)touch.x, (int)touch.y);
 
 # ============================================
 # Buzzer Configuration
 # ============================================
-output:
-  - platform: ledc
-    pin: GPIO21
-    id: buzzer_output
-
 rtttl:
   id: buzzer
   output: buzzer_output
-  on_finished_playback:
-    - logger.log: "Buzzer finished"
 
 # ============================================
-# I2S Microphone Configuration (INMP441)
+# I2S Audio (INMP441 Microphone)
 # ============================================
 i2s_audio:
-  - id: i2s_in
+  - id: i2s_audio_bus
     i2s_lrclk_pin: GPIO25  # WS
     i2s_bclk_pin: GPIO26   # SCK
 
@@ -128,80 +225,423 @@ microphone:
     pdm: false
     channel: left
     bits_per_sample: 32bit
-    i2s_audio_id: i2s_in
+    i2s_audio_id: i2s_audio_bus
 
 # ============================================
-# Voice Assistant Configuration
+# Micro Wake Word (On-Device Wake Word Detection)
+# ============================================
+micro_wake_word:
+  id: mww
+  models:
+    - okay_nabu
+    - hey_jarvis
+  on_wake_word_detected:
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+
+# ============================================
+# Voice Assistant
 # ============================================
 voice_assistant:
   id: va
   microphone: external_microphone
-  # speaker: external_speaker  # Optional: Wenn Lautsprecher hinzugefügt wird
-
-  use_wake_word: false  # Später auf true setzen wenn Wake Word trainiert ist
+  micro_wake_word: mww
+  use_wake_word: true
+  noise_suppression_level: 2
+  auto_gain: 31dBFS
+  volume_multiplier: 2.0
 
   on_listening:
-    - light.turn_on:
-        id: display_backlight
-        brightness: 100%
+    - lambda: id(voice_assistant_phase) = ${voice_assist_listening_phase_id};
+    - text_sensor.template.publish:
+        id: text_request
+        state: "..."
+    - text_sensor.template.publish:
+        id: text_response
+        state: "..."
     - rtttl.play: "short:d=4,o=5,b=100:16e6"
-    - lambda: |-
-        ESP_LOGI("voice", "Listening...");
+    - script.execute: draw_display
+
+  on_stt_vad_end:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_thinking_phase_id};
+    - script.execute: draw_display
 
   on_stt_end:
+    - text_sensor.template.publish:
+        id: text_request
+        state: !lambda return x;
     - rtttl.play: "short:d=4,o=5,b=100:16e6,16e6"
-    - lambda: |-
-        ESP_LOGI("voice", "Processing...");
+    - script.execute: draw_display
 
   on_tts_start:
-    - lambda: |-
-        ESP_LOGI("voice", "Speaking...");
-
-  on_tts_end:
-    - lambda: |-
-        ESP_LOGI("voice", "Done speaking");
+    - text_sensor.template.publish:
+        id: text_response
+        state: !lambda return x;
+    - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
+    - script.execute: draw_display
 
   on_end:
-    - light.turn_on:
-        id: display_backlight
-        brightness: 50%
-    - lambda: |-
-        ESP_LOGI("voice", "Session ended");
+    - if:
+        condition:
+          - lambda: return id(wake_word_engine_location).state == "On device";
+        then:
+          - lambda: id(va).set_use_wake_word(false);
+          - micro_wake_word.start:
+    - script.execute: set_idle_or_mute_phase
+    - script.execute: draw_display
+    - text_sensor.template.publish:
+        id: text_request
+        state: ""
+    - text_sensor.template.publish:
+        id: text_response
+        state: ""
 
   on_error:
-    - rtttl.play: "error:d=4,o=5,b=100:8a4,8a4,8a4"
-    - lambda: |-
-        ESP_LOGE("voice", "Error occurred");
+    - if:
+        condition:
+          lambda: return !id(init_in_progress);
+        then:
+          - lambda: id(voice_assistant_phase) = ${voice_assist_error_phase_id};
+          - rtttl.play: "error:d=4,o=5,b=100:8a4,8a4,8a4"
+          - script.execute: draw_display
+          - delay: 1s
+          - if:
+              condition:
+                switch.is_off: mute
+              then:
+                - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
+              else:
+                - lambda: id(voice_assistant_phase) = ${voice_assist_muted_phase_id};
+          - script.execute: draw_display
+
+  on_client_connected:
+    - lambda: id(init_in_progress) = false;
+    - script.execute: start_wake_word
+    - script.execute: set_idle_or_mute_phase
+    - script.execute: draw_display
+
+  on_client_disconnected:
+    - script.execute: stop_wake_word
+    - lambda: id(voice_assistant_phase) = ${voice_assist_not_ready_phase_id};
+    - script.execute: draw_display
+
+  on_timer_started:
+    - script.execute: draw_display
+  on_timer_cancelled:
+    - script.execute: draw_display
+  on_timer_updated:
+    - script.execute: draw_display
+  on_timer_tick:
+    - script.execute: draw_display
+  on_timer_finished:
+    - switch.turn_on: timer_ringing
+    - lambda: id(voice_assistant_phase) = ${voice_assist_timer_finished_phase_id};
+    - script.execute: draw_display
 
 # ============================================
-# Binary Sensors (Touch Buttons)
+# Scripts
+# ============================================
+script:
+  - id: draw_display
+    then:
+      - if:
+          condition:
+            lambda: return !id(init_in_progress);
+          then:
+            - if:
+                condition:
+                  wifi.connected:
+                then:
+                  - if:
+                      condition:
+                        api.connected:
+                      then:
+                        - lambda: |
+                            switch(id(voice_assistant_phase)) {
+                              case ${voice_assist_listening_phase_id}:
+                                id(main_display).show_page(listening_page);
+                                id(main_display).update();
+                                break;
+                              case ${voice_assist_thinking_phase_id}:
+                                id(main_display).show_page(thinking_page);
+                                id(main_display).update();
+                                break;
+                              case ${voice_assist_replying_phase_id}:
+                                id(main_display).show_page(replying_page);
+                                id(main_display).update();
+                                break;
+                              case ${voice_assist_error_phase_id}:
+                                id(main_display).show_page(error_page);
+                                id(main_display).update();
+                                break;
+                              case ${voice_assist_muted_phase_id}:
+                                id(main_display).show_page(muted_page);
+                                id(main_display).update();
+                                break;
+                              case ${voice_assist_not_ready_phase_id}:
+                                id(main_display).show_page(no_ha_page);
+                                id(main_display).update();
+                                break;
+                              case ${voice_assist_timer_finished_phase_id}:
+                                id(main_display).show_page(timer_finished_page);
+                                id(main_display).update();
+                                break;
+                              default:
+                                id(main_display).show_page(idle_page);
+                                id(main_display).update();
+                            }
+                      else:
+                        - display.page.show: no_ha_page
+                        - component.update: main_display
+                else:
+                  - display.page.show: no_wifi_page
+                  - component.update: main_display
+          else:
+            - display.page.show: initializing_page
+            - component.update: main_display
+
+  - id: fetch_first_active_timer
+    then:
+      - lambda: |
+          const auto timers = id(va).get_timers();
+          auto output_timer = timers.begin()->second;
+          for (auto &iterable_timer : timers) {
+            if (iterable_timer.second.is_active && iterable_timer.second.seconds_left <= output_timer.seconds_left) {
+              output_timer = iterable_timer.second;
+            }
+          }
+          id(global_first_active_timer) = output_timer;
+
+  - id: check_if_timers_active
+    then:
+      - lambda: |
+          const auto timers = id(va).get_timers();
+          bool output = false;
+          if (timers.size() > 0) {
+            for (auto &iterable_timer : timers) {
+              if(iterable_timer.second.is_active) {
+                output = true;
+              }
+            }
+          }
+          id(global_is_timer_active) = output;
+
+  - id: fetch_first_timer
+    then:
+      - lambda: |
+          const auto timers = id(va).get_timers();
+          auto output_timer = timers.begin()->second;
+          for (auto &iterable_timer : timers) {
+            if (iterable_timer.second.seconds_left <= output_timer.seconds_left) {
+              output_timer = iterable_timer.second;
+            }
+          }
+          id(global_first_timer) = output_timer;
+
+  - id: check_if_timers
+    then:
+      - lambda: |
+          const auto timers = id(va).get_timers();
+          bool output = false;
+          if (timers.size() > 0) {
+            output = true;
+          }
+          id(global_is_timer) = output;
+
+  - id: draw_timer_timeline
+    then:
+      - lambda: |
+          id(check_if_timers_active).execute();
+          id(check_if_timers).execute();
+          // Angepasst für 240px Breite (Portrait)
+          if (id(global_is_timer_active)){
+            id(fetch_first_active_timer).execute();
+            int active_pixels = round(240 * id(global_first_active_timer).seconds_left / max(id(global_first_active_timer).total_seconds, static_cast<uint32_t>(1)));
+            if (active_pixels > 0){
+              id(main_display).filled_rectangle(0, 305, 240, 15, Color::WHITE);
+              id(main_display).filled_rectangle(0, 306, active_pixels, 13, id(active_timer_color));
+            }
+          } else if (id(global_is_timer)){
+            id(fetch_first_timer).execute();
+            int active_pixels = round(240 * id(global_first_timer).seconds_left / max(id(global_first_timer).total_seconds, static_cast<uint32_t>(1)));
+            if (active_pixels > 0){
+              id(main_display).filled_rectangle(0, 305, 240, 15, Color::WHITE);
+              id(main_display).filled_rectangle(0, 306, active_pixels, 13, id(paused_timer_color));
+            }
+          }
+
+  - id: draw_active_timer_widget
+    then:
+      - lambda: |
+          id(check_if_timers_active).execute();
+          if (id(global_is_timer_active)){
+            // Angepasst für 240px Breite
+            id(main_display).filled_rectangle(50, 60, 140, 40, Color::WHITE);
+            id(main_display).rectangle(50, 60, 140, 40, Color::BLACK);
+
+            id(fetch_first_active_timer).execute();
+            int hours_left = floor(id(global_first_active_timer).seconds_left / 3600);
+            int minutes_left = floor((id(global_first_active_timer).seconds_left - hours_left * 3600) / 60);
+            int seconds_left = id(global_first_active_timer).seconds_left - hours_left * 3600 - minutes_left * 60;
+            auto display_hours = (hours_left < 10 ? "0" : "") + std::to_string(hours_left);
+            auto display_minute = (minutes_left < 10 ? "0" : "") + std::to_string(minutes_left);
+            auto display_seconds = (seconds_left < 10 ? "0" : "") + std::to_string(seconds_left);
+
+            std::string display_string = "";
+            if (hours_left > 0) {
+              display_string = display_hours + ":" + display_minute;
+            } else {
+              display_string = display_minute + ":" + display_seconds;
+            }
+            id(main_display).printf(120, 65, id(font_timer), Color::BLACK, TextAlign::CENTER, "%s", display_string.c_str());
+          }
+
+  - id: start_wake_word
+    then:
+      - if:
+          condition:
+            and:
+              - not:
+                  - voice_assistant.is_running:
+              - lambda: return id(wake_word_engine_location).state == "On device";
+          then:
+            - lambda: id(va).set_use_wake_word(false);
+            - micro_wake_word.start:
+      - if:
+          condition:
+            and:
+              - not:
+                  - voice_assistant.is_running:
+              - lambda: return id(wake_word_engine_location).state == "In Home Assistant";
+          then:
+            - lambda: id(va).set_use_wake_word(true);
+            - voice_assistant.start_continuous:
+
+  - id: stop_wake_word
+    then:
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).state == "In Home Assistant";
+          then:
+            - lambda: id(va).set_use_wake_word(false);
+            - voice_assistant.stop:
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).state == "On device";
+          then:
+            - micro_wake_word.stop:
+
+  - id: set_idle_or_mute_phase
+    then:
+      - if:
+          condition:
+            switch.is_off: mute
+          then:
+            - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
+          else:
+            - lambda: id(voice_assistant_phase) = ${voice_assist_muted_phase_id};
+
+# ============================================
+# Switches
+# ============================================
+switch:
+  - platform: template
+    name: Mute
+    id: mute
+    icon: "mdi:microphone-off"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    on_turn_off:
+      - microphone.unmute:
+      - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
+      - script.execute: draw_display
+    on_turn_on:
+      - microphone.mute:
+      - lambda: id(voice_assistant_phase) = ${voice_assist_muted_phase_id};
+      - script.execute: draw_display
+
+  - platform: template
+    id: timer_ringing
+    optimistic: true
+    internal: true
+    restore_mode: ALWAYS_OFF
+    on_turn_off:
+      - rtttl.stop: buzzer
+
+# ============================================
+# Select Components
+# ============================================
+select:
+  - platform: template
+    entity_category: config
+    name: Wake word engine location
+    id: wake_word_engine_location
+    icon: "mdi:account-voice"
+    optimistic: true
+    restore_value: true
+    options:
+      - In Home Assistant
+      - On device
+    initial_option: On device
+    on_value:
+      - if:
+          condition:
+            lambda: return !id(init_in_progress);
+          then:
+            - wait_until:
+                lambda: return id(voice_assistant_phase) == ${voice_assist_muted_phase_id} || id(voice_assistant_phase) == ${voice_assist_idle_phase_id};
+            - if:
+                condition:
+                  lambda: return x == "In Home Assistant";
+                then:
+                  - micro_wake_word.stop
+                  - delay: 500ms
+                  - if:
+                      condition:
+                        switch.is_off: mute
+                      then:
+                        - lambda: id(va).set_use_wake_word(true);
+                        - voice_assistant.start_continuous:
+            - if:
+                condition:
+                  lambda: return x == "On device";
+                then:
+                  - lambda: id(va).set_use_wake_word(false);
+                  - voice_assistant.stop
+                  - delay: 500ms
+                  - if:
+                      condition:
+                        switch.is_off: mute
+                      then:
+                        - micro_wake_word.start
+
+# ============================================
+# Binary Sensors
 # ============================================
 binary_sensor:
-  # Push-to-Talk Button (Beispiel für Touch-Button)
+  # Optional: Mute button via touchscreen
   - platform: touchscreen
-    name: "${friendly_name} PTT Button"
-    id: ptt_button
-    x_min: 20
-    x_max: 140
-    y_min: 200
-    y_max: 280
+    name: "Mute Button"
+    id: mute_button
+    internal: true
+    x_min: 80
+    x_max: 160
+    y_min: 280
+    y_max: 310
     on_press:
-      - voice_assistant.start:
-      - logger.log: "Push-to-Talk activated"
-    on_release:
-      - voice_assistant.stop:
-      - logger.log: "Push-to-Talk released"
+      - switch.toggle: mute
 
 # ============================================
 # Sensors
 # ============================================
 sensor:
   - platform: wifi_signal
-    name: "${friendly_name} WiFi Signal"
+    name: "WiFi Signal"
     update_interval: 60s
 
   - platform: uptime
-    name: "${friendly_name} Uptime"
+    name: "Uptime"
 
 # ============================================
 # Text Sensors
@@ -209,41 +649,159 @@ sensor:
 text_sensor:
   - platform: wifi_info
     ip_address:
-      name: "${friendly_name} IP Address"
+      name: "IP Address"
     ssid:
-      name: "${friendly_name} SSID"
+      name: "SSID"
+
+  - id: text_request
+    platform: template
+    on_value:
+      lambda: |-
+        if(id(text_request).state.length() > 28) {
+          std::string name = id(text_request).state.c_str();
+          std::string truncated = esphome::str_truncate(name.c_str(), 27);
+          id(text_request).state = (truncated + "...").c_str();
+        }
+
+  - id: text_response
+    platform: template
+    on_value:
+      lambda: |-
+        if(id(text_response).state.length() > 28) {
+          std::string name = id(text_response).state.c_str();
+          std::string truncated = esphome::str_truncate(name.c_str(), 27);
+          id(text_response).state = (truncated + "...").c_str();
+        }
 
 # ============================================
-# Fonts (für Display)
+# Globals
+# ============================================
+globals:
+  - id: init_in_progress
+    type: bool
+    restore_value: false
+    initial_value: "true"
+  - id: voice_assistant_phase
+    type: int
+    restore_value: false
+    initial_value: ${voice_assist_not_ready_phase_id}
+  - id: global_first_active_timer
+    type: voice_assistant::Timer
+    restore_value: false
+  - id: global_is_timer_active
+    type: bool
+    restore_value: false
+  - id: global_first_timer
+    type: voice_assistant::Timer
+    restore_value: false
+  - id: global_is_timer
+    type: bool
+    restore_value: false
+
+# ============================================
+# Images (240x320 Portrait)
+# ============================================
+image:
+  - file: ${error_illustration_file}
+    id: casita_error
+    resize: 240x320
+    type: RGB
+    transparency: alpha_channel
+  - file: ${idle_illustration_file}
+    id: casita_idle
+    resize: 240x320
+    type: RGB
+    transparency: alpha_channel
+  - file: ${listening_illustration_file}
+    id: casita_listening
+    resize: 240x320
+    type: RGB
+    transparency: alpha_channel
+  - file: ${thinking_illustration_file}
+    id: casita_thinking
+    resize: 240x320
+    type: RGB
+    transparency: alpha_channel
+  - file: ${replying_illustration_file}
+    id: casita_replying
+    resize: 240x320
+    type: RGB
+    transparency: alpha_channel
+  - file: ${timer_finished_illustration_file}
+    id: casita_timer_finished
+    resize: 240x320
+    type: RGB
+    transparency: alpha_channel
+  - file: ${loading_illustration_file}
+    id: casita_initializing
+    resize: 240x320
+    type: RGB
+    transparency: alpha_channel
+  - file: https://github.com/esphome/wake-word-voice-assistants/raw/main/error_box_illustrations/error-no-wifi.png
+    id: error_no_wifi
+    resize: 240x320
+    type: RGB
+    transparency: alpha_channel
+  - file: https://github.com/esphome/wake-word-voice-assistants/raw/main/error_box_illustrations/error-no-ha.png
+    id: error_no_ha
+    resize: 240x320
+    type: RGB
+    transparency: alpha_channel
+
+# ============================================
+# Fonts
 # ============================================
 font:
-  - file: "gfonts://Roboto"
-    id: font_small
-    size: 14
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 300
+      italic: true
+    id: font_request
+    size: 13
+    glyphs: " !#%'()+,-./0123456789:;<>?@ABCDEFGHIJKLMNOPQRSTUVWYZ[]_abcdefghijklmnopqrstuvwxyz{|}°"
 
-  - file: "gfonts://Roboto"
-    id: font_medium
-    size: 20
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 300
+    id: font_response
+    size: 13
+    glyphs: " !#%'()+,-./0123456789:;<>?@ABCDEFGHIJKLMNOPQRSTUVWYZ[]_abcdefghijklmnopqrstuvwxyz{|}°"
 
-  - file: "gfonts://Roboto"
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 300
+    id: font_timer
+    size: 24
+    glyphs: "0123456789:"
+
+  - file:
+      type: gfonts
+      family: Figtree
+      weight: 400
     id: font_large
-    size: 32
+    size: 28
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
 
 # ============================================
 # Colors
 # ============================================
 color:
-  - id: color_white
-    red: 100%
-    green: 100%
-    blue: 100%
-
-  - id: color_black
-    red: 0%
-    green: 0%
-    blue: 0%
-
-  - id: color_blue
-    red: 0%
-    green: 50%
-    blue: 100%
+  - id: idle_color
+    hex: ${idle_illustration_background_color}
+  - id: listening_color
+    hex: ${listening_illustration_background_color}
+  - id: thinking_color
+    hex: ${thinking_illustration_background_color}
+  - id: replying_color
+    hex: ${replying_illustration_background_color}
+  - id: loading_color
+    hex: ${loading_illustration_background_color}
+  - id: error_color
+    hex: ${error_illustration_background_color}
+  - id: active_timer_color
+    hex: "26ed3a"
+  - id: paused_timer_color
+    hex: "3b89e3"

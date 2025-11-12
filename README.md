@@ -1,17 +1,31 @@
 # Jarvis Lite - ESP32 Voice Assistant
 
-Ein Voice Assistant für Home Assistant basierend auf:
-- **AZ-Touch MOD 2.8"** Display-Gehäuse
+Ein Voice Assistant für Home Assistant mit **On-Device Wake Word Detection** basierend auf:
+- **AZ-Touch MOD 2.8"** Display-Gehäuse (240x320 Portrait)
 - **ESP32 DevKit C** Mikrocontroller
 - **INMP441** I2S Mikrofon
+- **micro_wake_word** für lokale Wake Word Erkennung
+
+## ✨ Features
+
+- 🎤 **Wake Word Detection**: "Okay Nabu" oder "Hey Jarvis" (On-Device)
+- 📱 **Touchscreen Display**: 2.8" mit animierten Status-Anzeigen
+- ⏲️ **Timer-Verwaltung**: Visuelles Feedback mit Timeline
+- 🔇 **Mute-Funktion**: Per Touch oder Home Assistant
+- 🎵 **Audio-Feedback**: Piezo-Buzzer für alle Events
+- 🌐 **Zwei Wake Word Modes**: On-Device oder In Home Assistant
+- 📊 **Status-Pages**: Idle, Listening, Thinking, Replying, Error
 
 ## 📋 Inhaltsverzeichnis
 
-- [Hardware-Setup](#hardware-setup)
-- [Software-Installation](#software-installation)
-- [Konfiguration](#konfiguration)
-- [Erste Inbetriebnahme](#erste-inbetriebnahme)
-- [Troubleshooting](#troubleshooting)
+- [Features](#-features)
+- [Hardware-Setup](#-hardware-setup)
+- [Software-Installation](#-software-installation)
+- [Wake Word Detection](#-wake-word-detection)
+- [Konfiguration](#-konfiguration)
+- [Erste Inbetriebnahme](#-erste-inbetriebnahme)
+- [Display Views](#-display-views)
+- [Troubleshooting](#-troubleshooting)
 
 ## 🔧 Hardware-Setup
 
@@ -41,12 +55,35 @@ L/R  → GND
 
 > ⚠️ **Wichtig**: INMP441 nur mit 3.3V versorgen, NIEMALS 5V!
 
+## 🎤 Wake Word Detection
+
+Jarvis Lite nutzt **micro_wake_word** für lokale Wake Word Erkennung direkt auf dem ESP32:
+
+### Verfügbare Wake Words
+- **"Okay Nabu"** (Standard)
+- **"Hey Jarvis"**
+
+### Wake Word Modes
+
+**On Device (Standard):**
+- ✅ Wake Word läuft lokal auf ESP32
+- ✅ Keine Daten werden übertragen bis Wake Word erkannt
+- ✅ Geringere Latenz
+- ✅ Besserer Datenschutz
+
+**In Home Assistant:**
+- Audio-Stream wird kontinuierlich an HA gesendet
+- Flexibler (mehr Wake Words verfügbar)
+- Höhere Server-Last
+
+**Detaillierte Dokumentation:** [docs/wake-word-setup.md](docs/wake-word-setup.md)
+
 ## 💻 Software-Installation
 
 ### Voraussetzungen
 
 1. **Home Assistant** (Version 2023.12 oder neuer)
-2. **ESPHome** Add-on installiert
+2. **ESPHome** Add-on installiert (min. 2024.11.0)
 3. **Home Assistant Voice** Pipeline konfiguriert
 
 ### ESPHome Installation
@@ -142,9 +179,53 @@ Nach dem ersten Flash kannst du Updates drahtlos einspielen.
 
 ### 4. Testen
 
-- Tippe auf den Push-to-Talk Button am Display
-- Sprich einen Befehl (z.B. "Turn on the lights")
-- Der Buzzer sollte piepen und das Display reagieren
+**Wake Word aktivieren:**
+- Sage "Okay Nabu" oder "Hey Jarvis"
+- Display wechselt zu "Listening"
+- Buzzer piept kurz
+- Sprich deinen Befehl (z.B. "Turn on the lights")
+
+**Alternativ: Mute Button**
+- Berühre den unteren Display-Bereich
+- Mikrofon wird gemuted/unmuted
+
+## 📱 Display Views
+
+Das Display zeigt verschiedene Ansichten je nach Status (alle im 240x320 Portrait Format):
+
+### Idle (Bereit)
+- "Casita" Idle-Animation
+- Timer-Widget (wenn Timer läuft)
+- Timer-Timeline am unteren Rand
+
+### Listening (Hört zu)
+- "Casita" Listening-Animation
+- Buzzer: 1x kurzer Piep
+- Wartet auf deinen Befehl
+
+### Thinking (Verarbeitet)
+- "Casita" Thinking-Animation
+- Text-Box oben: Zeigt deine Anfrage
+- STT wird verarbeitet
+
+### Replying (Antwortet)
+- "Casita" Replying-Animation
+- Text-Box oben: Deine Anfrage
+- Text-Box unten: Antwort des Assistenten
+
+### Timer Finished
+- "Casita" Timer-Animation
+- Buzzer klingelt bis du den Timer stoppst
+- Berühre Display zum Stoppen
+
+### Muted
+- Schwarzer Bildschirm mit "MUTED"
+- Timer-Anzeige weiterhin aktiv
+- Reagiert nicht auf Wake Words
+
+### Error / No Connection
+- Error-Illustration
+- Zeigt WiFi- oder HA-Verbindungsprobleme
 
 ## 🐛 Troubleshooting
 
@@ -178,40 +259,68 @@ Nach dem ersten Flash kannst du Updates drahtlos einspielen.
 ### Voice Assistant startet nicht
 
 - **Home Assistant Version**: Mind. 2023.12
+- **ESPHome Version**: Mind. 2024.11.0
 - **Pipeline**: Voice Pipeline muss eingerichtet sein
 - **API Key**: Muss in HA übereinstimmen
 
+### Wake Word wird nicht erkannt
+
+- **INMP441 Spannung**: Nur 3.3V, niemals 5V!
+- **L/R Pin**: Muss auf GND (Left Channel)
+- **Mute Status**: Display darf nicht "MUTED" zeigen
+- **Engine Location**: Prüfe "On device" ist ausgewählt
+- **Logs prüfen**: ESPHome → Jarvis → Logs (nach "micro_wake_word")
+
+### Display zeigt nur "INITIALIZING"
+
+- **Wartezeit**: 30 Sekunden nach Boot abwarten
+- **WiFi**: Verbindung prüfen
+- **HA API**: Home Assistant erreichbar?
+
 ## 📚 Weitere Ressourcen
 
-- [ESPHome Voice Assistant Dokumentation](https://esphome.io/components/voice_assistant.html)
+- **[Wake Word Setup Guide](docs/wake-word-setup.md)** - Detaillierte Wake Word Dokumentation
+- **[Hardware Setup](docs/hardware-setup.md)** - Kompletter Anschlussplan
+- **[Pinout Reference](docs/pinout-reference.md)** - GPIO Pin-Belegung
+- [ESPHome Voice Assistant](https://esphome.io/components/voice_assistant.html)
+- [ESPHome micro_wake_word](https://esphome.io/components/micro_wake_word/)
 - [Home Assistant Voice](https://www.home-assistant.io/voice_control/)
-- [AZ-Touch MOD Infos](https://www.hwhardsoft.de/english/projects/arduitouch-esp/)
+- [S3-BOX Reference Config](https://github.com/esphome/wake-word-voice-assistants)
+- [AZ-Touch MOD Hardware](https://www.hwhardsoft.de/english/projects/arduitouch-esp/)
 
 ## 🔄 Updates und Erweiterungen
 
-### Wake Word hinzufügen
-
-In `esphome/voice-assistant.yaml`:
-
-```yaml
-voice_assistant:
-  use_wake_word: true
-  # Weitere Wake Word Konfiguration
-```
-
 ### Lautsprecher hinzufügen (MAX98357A)
 
-Siehe [docs/hardware-setup.md](docs/hardware-setup.md) für Pin-Belegung.
+Für TTS-Ausgabe kannst du einen I2S Verstärker hinzufügen.
 
+**Hardware:**
+- MAX98357A I2S Verstärker
+- 4-8Ω Lautsprecher (3-5W)
+
+**Verkabelung:** Siehe [docs/hardware-setup.md](docs/hardware-setup.md)
+
+**ESPHome Config:**
 ```yaml
 speaker:
   - platform: i2s_audio
     id: external_speaker
     dac_type: external
     i2s_dout_pin: GPIO22
-    i2s_audio_id: i2s_in
-    mode: mono
+    i2s_audio_id: i2s_audio_bus
+    sample_rate: 48000
+    bits_per_sample: 16bit
+    channel: left
+
+voice_assistant:
+  speaker: external_speaker  # Hinzufügen
 ```
+
+### Eigene Wake Words trainieren
+
+Du kannst eigene Wake Words erstellen:
+- [microWakeWord Trainer](https://www.kevinahrendt.com/micro-wake-word)
+- [Training Guide](https://github.com/kahrendt/microWakeWord)
 
 ## 📝 Lizenz
 
