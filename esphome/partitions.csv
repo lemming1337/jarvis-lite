@@ -1,0 +1,9 @@
+# Name,   Type, SubType,  Offset,   Size,     Flags
+# ESP32 Custom Partition Table - Single Factory App (No OTA)
+# Maximale App-Größe: ~3MB (keine OTA-Partitionen)
+# Nur USB-Flashing möglich, kein OTA-Update!
+
+nvs,      data, nvs,      0x9000,   0x6000,
+phy_init, data, phy,      0xf000,   0x1000,
+factory,  app,  factory,  0x10000,  0x2F0000,
+spiffs,   data, spiffs,   0x300000, 0x100000,

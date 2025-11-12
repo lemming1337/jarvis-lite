@@ -37,6 +37,9 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   min_version: 2024.11.0
+  platformio_options:
+    board_build.partitions: partitions.csv
+    board_upload.flash_size: 4MB
   on_boot:
     priority: 600
     then:
@@ -69,6 +72,8 @@ api:
   on_client_disconnected:
     - script.execute: draw_display
 
+# OTA deaktiviert - Custom Partition für maximale App-Größe (~3MB)
+# Updates nur via USB möglich!
 #ota:
 #  - platform: esphome
 #    id: ota_esphome

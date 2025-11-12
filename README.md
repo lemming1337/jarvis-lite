@@ -85,6 +85,9 @@ Jarvis Lite nutzt **micro_wake_word** für lokale Wake Word Erkennung direkt auf
 1. **Home Assistant** (Version 2023.12 oder neuer)
 2. **ESPHome** Add-on installiert (min. 2024.11.0)
 3. **Home Assistant Voice** Pipeline konfiguriert
+4. **USB-Kabel** für ESP32 (Updates nur via USB, kein OTA!)
+
+> ⚠️ **Wichtig**: Diese Konfiguration verwendet eine **Custom Partition ohne OTA-Support** für maximale Firmware-Größe (~3MB). Updates sind **nur via USB** möglich! Siehe [Flash-Optimierung](docs/flash-optimization.md)
 
 ### ESPHome Installation
 
@@ -279,6 +282,7 @@ Das Display zeigt verschiedene Ansichten je nach Status (alle im 240x320 Portrai
 
 ## 📚 Weitere Ressourcen
 
+- **[Flash-Optimierung](docs/flash-optimization.md)** - Custom Partitions & No-OTA Setup ⚡
 - **[Wake Word Setup Guide](docs/wake-word-setup.md)** - Detaillierte Wake Word Dokumentation
 - **[Hardware Setup](docs/hardware-setup.md)** - Kompletter Anschlussplan
 - **[Pinout Reference](docs/pinout-reference.md)** - GPIO Pin-Belegung
@@ -289,6 +293,25 @@ Das Display zeigt verschiedene Ansichten je nach Status (alle im 240x320 Portrai
 - [AZ-Touch MOD Hardware](https://www.hwhardsoft.de/english/projects/arduitouch-esp/)
 
 ## 🔄 Updates und Erweiterungen
+
+### Firmware Updates (nur USB!)
+
+Da OTA deaktiviert ist, musst du den ESP32 per USB verbinden:
+
+```bash
+# ESP32 per USB-Kabel verbinden
+esphome run esphome/voice-assistant.yaml
+
+# Wähle USB Port (z.B. /dev/ttyUSB0 oder COM3)
+```
+
+**Alternative: ESPHome Web Flasher**
+1. Kompiliere Firmware in ESPHome Dashboard
+2. Download .bin Datei
+3. Öffne https://web.esphome.io/
+4. Upload & Flash via Browser
+
+**Warum kein OTA?** Die Firmware mit Wake Word + Display ist zu groß (~2.4MB) für Standard-Partitionierung (max. 1.6MB). Custom Partition ermöglicht bis zu 3MB. Details: [Flash-Optimierung](docs/flash-optimization.md)
 
 ### Lautsprecher hinzufügen (MAX98357A)
 
