@@ -51,8 +51,9 @@ esphome:
 
 esp32:
   board: esp32dev
+  cpu_frequency: 240MHz
   framework:
-    type: arduino
+    type: esp-idf
 
 # ============================================
 # Connectivity
@@ -62,22 +63,20 @@ logger:
 
 api:
   encryption:
-    key: !secret api_key
+    key: REPLACE
   on_client_connected:
     - script.execute: draw_display
   on_client_disconnected:
     - script.execute: draw_display
 
-ota:
-  - platform: esphome
-    password: !secret ota_password
+#ota:
+#  - platform: esphome
+#    id: ota_esphome
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   ap:
-    ssid: "${friendly_name} Fallback"
-    password: !secret ap_password
   on_connect:
     - script.execute: draw_display
   on_disconnect:
@@ -98,7 +97,7 @@ spi:
 # Display Configuration (ILI9341 - 240x320)
 # ============================================
 display:
-  - platform: ili9341
+  - platform: ili9xxx
     id: main_display
     model: TFT 2.4
     cs_pin: GPIO15
@@ -106,6 +105,7 @@ display:
     reset_pin: GPIO4
     rotation: 0  # Portrait Mode (240x320)
     update_interval: never
+    invert_colors: False
     pages:
       - id: idle_page
         lambda: |-
@@ -567,7 +567,7 @@ switch:
     internal: true
     restore_mode: ALWAYS_OFF
     on_turn_off:
-      - rtttl.stop: buzzer
+      - rtttl.stop:
 
 # ============================================
 # Select Components
