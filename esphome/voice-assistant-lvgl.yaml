@@ -193,14 +193,14 @@ lvgl:
             bg_color: 0x2196F3
             on_click:
               - homeassistant.service:
-                  service: !lambda return id(button_1_service);
+                  service: !lambda "return id(button_1_service);"
                   data:
-                    entity_id: !lambda return id(button_1_entity);
+                    entity_id: !lambda "return id(button_1_entity);"
             widgets:
               - label:
                   id: action_button_1_label
                   align: center
-                  text: !lambda return id(button_1_label_text);
+                  text: !lambda "return id(button_1_label_text);"
                   text_color: 0xFFFFFF
 
         # Action Button 2 (rechts oben)
@@ -213,14 +213,14 @@ lvgl:
             bg_color: 0x4CAF50
             on_click:
               - homeassistant.service:
-                  service: !lambda return id(button_2_service);
+                  service: !lambda "return id(button_2_service);"
                   data:
-                    entity_id: !lambda return id(button_2_entity);
+                    entity_id: !lambda "return id(button_2_entity);"
             widgets:
               - label:
                   id: action_button_2_label
                   align: center
-                  text: !lambda return id(button_2_label_text);
+                  text: !lambda "return id(button_2_label_text);"
                   text_color: 0xFFFFFF
 
         # Status Label (oben Mitte-Rechts)
@@ -382,14 +382,14 @@ voice_assistant:
   on_stt_end:
     - text_sensor.template.publish:
         id: text_request
-        state: !lambda return x;
+        state: !lambda "return x;"
     - rtttl.play: "short:d=4,o=5,b=100:16e6,16e6"
     - script.execute: update_ui
 
   on_tts_start:
     - text_sensor.template.publish:
         id: text_response
-        state: !lambda return x;
+        state: !lambda "return x;"
     - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
     - script.execute: update_ui
 
