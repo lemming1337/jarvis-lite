@@ -29,9 +29,9 @@ esphome:
           id(init_in_progress) = false;
           // Initialize button labels
           auto lbl1 = id(action_button_1_label);
-          lv_label_set_text(lbl1, id(button_1_label_text).value().c_str());
+          lv_label_set_text(lbl1, id(button_1_label_text).c_str());
           auto lbl2 = id(action_button_2_label);
-          lv_label_set_text(lbl2, id(button_2_label_text).value().c_str());
+          lv_label_set_text(lbl2, id(button_2_label_text).c_str());
           id(update_ui).execute();
       - lvgl.resume:
 
@@ -66,9 +66,9 @@ api:
         entity: string
       then:
         - lambda: |-
-            id(button_1_label_text).value() = label;
-            id(button_1_service).value() = service;
-            id(button_1_entity).value() = entity;
+            id(button_1_label_text) = label;
+            id(button_1_service) = service;
+            id(button_1_entity) = entity;
             auto lbl = id(action_button_1_label);
             lv_label_set_text(lbl, label.c_str());
     - action: set_button_2_config
@@ -78,9 +78,9 @@ api:
         entity: string
       then:
         - lambda: |-
-            id(button_2_label_text).value() = label;
-            id(button_2_service).value() = service;
-            id(button_2_entity).value() = entity;
+            id(button_2_label_text) = label;
+            id(button_2_service) = service;
+            id(button_2_entity) = entity;
             auto lbl = id(action_button_2_label);
             lv_label_set_text(lbl, label.c_str());
 
@@ -193,14 +193,14 @@ lvgl:
             bg_color: 0x2196F3
             on_click:
               - homeassistant.service:
-                  service: !lambda return id(button_1_service).value().c_str();
+                  service: !lambda "return id(button_1_service);"
                   data:
-                    entity_id: !lambda return id(button_1_entity).value().c_str();
+                    entity_id: !lambda "return id(button_1_entity);"
             widgets:
               - label:
                   id: action_button_1_label
                   align: center
-                  text: !lambda return id(button_1_label_text).value().c_str();
+                  text: !lambda "return id(button_1_label_text);"
                   text_color: 0xFFFFFF
 
         # Action Button 2 (rechts oben)
@@ -213,14 +213,14 @@ lvgl:
             bg_color: 0x4CAF50
             on_click:
               - homeassistant.service:
-                  service: !lambda return id(button_2_service).value().c_str();
+                  service: !lambda "return id(button_2_service);"
                   data:
-                    entity_id: !lambda return id(button_2_entity).value().c_str();
+                    entity_id: !lambda "return id(button_2_entity);"
             widgets:
               - label:
                   id: action_button_2_label
                   align: center
-                  text: !lambda return id(button_2_label_text).value().c_str();
+                  text: !lambda "return id(button_2_label_text);"
                   text_color: 0xFFFFFF
 
         # Status Label (oben Mitte-Rechts)
@@ -382,14 +382,14 @@ voice_assistant:
   on_stt_end:
     - text_sensor.template.publish:
         id: text_request
-        state: !lambda return x;
+        state: !lambda "return x;"
     - rtttl.play: "short:d=4,o=5,b=100:16e6,16e6"
     - script.execute: update_ui
 
   on_tts_start:
     - text_sensor.template.publish:
         id: text_response
-        state: !lambda return x;
+        state: !lambda "return x;"
     - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
     - script.execute: update_ui
 
@@ -680,28 +680,28 @@ text_sensor:
     name: "Action Button 1 Label"
     icon: "mdi:label"
     lambda: |-
-      return id(button_1_label_text).value();
+      return id(button_1_label_text);
 
   - id: ha_action_2_label
     platform: template
     name: "Action Button 2 Label"
     icon: "mdi:label"
     lambda: |-
-      return id(button_2_label_text).value();
+      return id(button_2_label_text);
 
   - id: ha_action_1_config
     platform: template
     name: "Action Button 1 Config"
     icon: "mdi:cog"
     lambda: |-
-      return id(button_1_service).value() + std::string(" -> ") + id(button_1_entity).value();
+      return id(button_1_service) + std::string(" -> ") + id(button_1_entity);
 
   - id: ha_action_2_config
     platform: template
     name: "Action Button 2 Config"
     icon: "mdi:cog"
     lambda: |-
-      return id(button_2_service).value() + std::string(" -> ") + id(button_2_entity).value();
+      return id(button_2_service) + std::string(" -> ") + id(button_2_entity);
 
 # ============================================
 # Globals
