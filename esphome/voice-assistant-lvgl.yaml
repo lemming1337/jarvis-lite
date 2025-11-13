@@ -29,9 +29,9 @@ esphome:
           id(init_in_progress) = false;
           // Initialize button labels
           auto lbl1 = id(action_button_1_label);
-          lv_label_set_text(lbl1, id(ha_action_1_label).state.c_str());
+          lv_label_set_text(lbl1, id(button_1_label_text).c_str());
           auto lbl2 = id(action_button_2_label);
-          lv_label_set_text(lbl2, id(ha_action_2_label).state.c_str());
+          lv_label_set_text(lbl2, id(button_2_label_text).c_str());
           id(update_ui).execute();
       - lvgl.resume:
 
@@ -58,6 +58,31 @@ api:
   on_client_disconnected:
     - lambda: id(api_connected) = false;
     - script.execute: update_ui
+  actions:
+    - action: set_button_1_config
+      variables:
+        label: string
+        service: string
+        entity: string
+      then:
+        - lambda: |-
+            id(button_1_label_text) = label;
+            id(button_1_service) = service;
+            id(button_1_entity) = entity;
+            auto lbl = id(action_button_1_label);
+            lv_label_set_text(lbl, label.c_str());
+    - action: set_button_2_config
+      variables:
+        label: string
+        service: string
+        entity: string
+      then:
+        - lambda: |-
+            id(button_2_label_text) = label;
+            id(button_2_service) = service;
+            id(button_2_entity) = entity;
+            auto lbl = id(action_button_2_label);
+            lv_label_set_text(lbl, label.c_str());
 
 wifi:
   ssid: !secret wifi_ssid
@@ -168,14 +193,14 @@ lvgl:
             bg_color: 0x2196F3
             on_click:
               - homeassistant.service:
-                  service: !lambda return id(ha_action_1_service).state.c_str();
+                  service: !lambda return id(button_1_service).c_str();
                   data:
-                    entity_id: !lambda return id(ha_action_1_entity).state.c_str();
+                    entity_id: !lambda return id(button_1_entity).c_str();
             widgets:
               - label:
                   id: action_button_1_label
                   align: center
-                  text: !lambda return id(ha_action_1_label).state.c_str();
+                  text: !lambda return id(button_1_label_text).c_str();
                   text_color: 0xFFFFFF
 
         # Action Button 2 (rechts oben)
@@ -188,14 +213,14 @@ lvgl:
             bg_color: 0x4CAF50
             on_click:
               - homeassistant.service:
-                  service: !lambda return id(ha_action_2_service).state.c_str();
+                  service: !lambda return id(button_2_service).c_str();
                   data:
-                    entity_id: !lambda return id(ha_action_2_entity).state.c_str();
+                    entity_id: !lambda return id(button_2_entity).c_str();
             widgets:
               - label:
                   id: action_button_2_label
                   align: center
-                  text: !lambda return id(ha_action_2_label).state.c_str();
+                  text: !lambda return id(button_2_label_text).c_str();
                   text_color: 0xFFFFFF
 
         # Status Label (oben Mitte-Rechts)
@@ -649,57 +674,32 @@ text_sensor:
           id(text_response).state = (truncated + "...").c_str();
         }
 
-  # Home Assistant Action Button 1 Configuration
+  # Home Assistant Action Button Text Sensors (read-only status)
   - id: ha_action_1_label
     platform: template
     name: "Action Button 1 Label"
-    initial_value: "Light 1"
     icon: "mdi:label"
-    entity_category: config
-    on_value:
-      - lambda: |-
-          auto lbl = id(action_button_1_label);
-          lv_label_set_text(lbl, x.c_str());
+    lambda: return id(button_1_label_text).c_str();
 
-  - id: ha_action_1_service
-    platform: template
-    name: "Action Button 1 Service"
-    initial_value: "light.toggle"
-    icon: "mdi:cog"
-    entity_category: config
-
-  - id: ha_action_1_entity
-    platform: template
-    name: "Action Button 1 Entity"
-    initial_value: "light.living_room"
-    icon: "mdi:lightbulb"
-    entity_category: config
-
-  # Home Assistant Action Button 2 Configuration
   - id: ha_action_2_label
     platform: template
     name: "Action Button 2 Label"
-    initial_value: "Light 2"
     icon: "mdi:label"
-    entity_category: config
-    on_value:
-      - lambda: |-
-          auto lbl = id(action_button_2_label);
-          lv_label_set_text(lbl, x.c_str());
+    lambda: return id(button_2_label_text).c_str();
 
-  - id: ha_action_2_service
+  - id: ha_action_1_config
     platform: template
-    name: "Action Button 2 Service"
-    initial_value: "light.toggle"
+    name: "Action Button 1 Config"
     icon: "mdi:cog"
-    entity_category: config
+    lambda: |-
+      return id(button_1_service) + " -> " + id(button_1_entity);
 
-  - id: ha_action_2_entity
+  - id: ha_action_2_config
     platform: template
-    name: "Action Button 2 Entity"
-    initial_value: "light.bedroom"
-    icon: "mdi:lightbulb"
-    entity_category: config
+    name: "Action Button 2 Config"
+    icon: "mdi:cog"
+    lambda: |-
+      return id(button_2_service) + " -> " + id(button_2_entity);
 
 # ============================================
 # Globals
@@ -721,3 +721,31 @@ globals:
     type: bool
     restore_value: false
     initial_value: "false"
+
+  # Button 1 Configuration
+  - id: button_1_label_text
+    type: std::string
+    restore_value: true
+    initial_value: '"Light 1"'
+  - id: button_1_service
+    type: std::string
+    restore_value: true
+    initial_value: '"light.toggle"'
+  - id: button_1_entity
+    type: std::string
+    restore_value: true
+    initial_value: '"light.living_room"'
+
+  # Button 2 Configuration
+  - id: button_2_label_text
+    type: std::string
+    restore_value: true
+    initial_value: '"Light 2"'
+  - id: button_2_service
+    type: std::string
+    restore_value: true
+    initial_value: '"light.toggle"'
+  - id: button_2_entity
+    type: std::string
+    restore_value: true
+    initial_value: '"light.bedroom"'
