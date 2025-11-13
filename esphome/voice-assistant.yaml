@@ -37,9 +37,6 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   min_version: 2024.11.0
-  platformio_options:
-    board_build.partitions: partitions.csv
-    board_upload.flash_size: 4MB
   on_boot:
     priority: 600
     then:
@@ -55,6 +52,8 @@ esphome:
 esp32:
   board: esp32dev
   cpu_frequency: 240MHz
+  flash_size: 4MB
+  partitions: partitions_big.csv
   framework:
     type: esp-idf
 
@@ -66,7 +65,7 @@ logger:
 
 api:
   encryption:
-    key: REPLACE
+    key: BXjDr4Xk6mqmJF7HSILBMqJFDfFCnfkRAhHZNx+tqj0=
   on_client_connected:
     - script.execute: draw_display
   on_client_disconnected:
@@ -105,12 +104,13 @@ display:
   - platform: ili9xxx
     id: main_display
     model: TFT 2.4
-    cs_pin: GPIO15
-    dc_pin: GPIO2
-    reset_pin: GPIO4
+    cs_pin: GPIO5
+    dc_pin: GPIO4
+    reset_pin: GPIO22
     rotation: 0  # Portrait Mode (240x320)
     update_interval: never
-    invert_colors: False
+    invert_colors: True
+    data_rate: 20000000.0
     pages:
       - id: idle_page
         lambda: |-
@@ -175,7 +175,7 @@ display:
 # Display Backlight (PWM)
 output:
   - platform: ledc
-    pin: GPIO32
+    pin: GPIO15
     id: backlight_pwm
   - platform: ledc
     pin: GPIO21
@@ -238,7 +238,6 @@ microphone:
 micro_wake_word:
   id: mww
   models:
-    - okay_nabu
     - hey_jarvis
   on_wake_word_detected:
     - voice_assistant.start:
@@ -809,4 +808,4 @@ color:
   - id: active_timer_color
     hex: "26ed3a"
   - id: paused_timer_color
-    hex: "3b89e3"
+    hex: "3b89e3"s
