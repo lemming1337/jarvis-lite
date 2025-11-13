@@ -182,6 +182,7 @@ lvgl:
   # UI Pages
   pages:
     - id: main_page
+      scrollbar_mode: "off"  # Disable scrollbar
       widgets:
         # Action Button 1 (links oben)
         - button:
@@ -257,7 +258,7 @@ lvgl:
               - label:
                   id: status_icon
                   align: center
-                  text: "💤"
+                  text: "ZZZ"
                   text_color: 0xFFFFFF
 
         # Request/Response Text Box (rechts neben dem Indikator)
@@ -354,11 +355,25 @@ microphone:
     i2s_audio_id: i2s_audio_bus
 
 # ============================================
+# Micro Wake Word (On-Device Wake Word Detection)
+# ============================================
+micro_wake_word:
+  id: mww
+  models:
+    - hey_jarvis
+    - okay_nabu
+    - alexa
+  on_wake_word_detected:
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+
+# ============================================
 # Voice Assistant
 # ============================================
 voice_assistant:
   id: va
   microphone: external_microphone
+  micro_wake_word: mww
   use_wake_word: true
   noise_suppression_level: 2
   auto_gain: 31dBFS
@@ -394,7 +409,12 @@ voice_assistant:
     - script.execute: update_ui
 
   on_end:
-    # OpenWakeWord läuft kontinuierlich - keine spezielle Behandlung nötig
+    - if:
+        condition:
+          - lambda: return id(wake_word_engine_location).state == "On device";
+        then:
+          - lambda: id(va).set_use_wake_word(false);
+          - micro_wake_word.start:
     - script.execute: set_idle_or_mute_phase
     - script.execute: update_ui
     - text_sensor.template.publish:
@@ -480,56 +500,56 @@ script:
             case ${voice_assist_listening_phase_id}:
               lv_label_set_text(lbl_status, "LISTENING");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x00FF00), 0);
-              lv_label_set_text(ico_status, "🎤");
+              lv_label_set_text(ico_status, "MIC");
               lv_label_set_text(lbl_request, "Listening...");
               break;
 
             case ${voice_assist_thinking_phase_id}:
               lv_label_set_text(lbl_status, "THINKING");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFFAA00), 0);
-              lv_label_set_text(ico_status, "🤔");
+              lv_label_set_text(ico_status, "...");
               lv_label_set_text(lbl_request, id(text_request).state.c_str());
               break;
 
             case ${voice_assist_replying_phase_id}:
               lv_label_set_text(lbl_status, "REPLYING");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
-              lv_label_set_text(ico_status, "💬");
+              lv_label_set_text(ico_status, ">>>");
               lv_label_set_text(lbl_request, id(text_response).state.c_str());
               break;
 
             case ${voice_assist_error_phase_id}:
               lv_label_set_text(lbl_status, "ERROR");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
-              lv_label_set_text(ico_status, "❌");
+              lv_label_set_text(ico_status, "ERR");
               lv_label_set_text(lbl_request, "Error occurred");
               break;
 
             case ${voice_assist_muted_phase_id}:
               lv_label_set_text(lbl_status, "MUTED");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x404040), 0);
-              lv_label_set_text(ico_status, "🔇");
+              lv_label_set_text(ico_status, "X");
               lv_label_set_text(lbl_request, "Microphone muted");
               break;
 
             case ${voice_assist_not_ready_phase_id}:
               lv_label_set_text(lbl_status, "NOT READY");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
-              lv_label_set_text(ico_status, "⚠");
+              lv_label_set_text(ico_status, "!");
               lv_label_set_text(lbl_request, "Connecting...");
               break;
 
             case ${voice_assist_timer_finished_phase_id}:
               lv_label_set_text(lbl_status, "TIMER DONE");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF00FF), 0);
-              lv_label_set_text(ico_status, "⏰");
+              lv_label_set_text(ico_status, "TIME");
               lv_label_set_text(lbl_request, "Timer finished!");
               break;
 
             default:  // IDLE
               lv_label_set_text(lbl_status, "READY");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
-              lv_label_set_text(ico_status, "💤");
+              lv_label_set_text(ico_status, "ZZZ");
               lv_label_set_text(lbl_request, "Say 'Hey Jarvis'");
           }
 
@@ -576,16 +596,36 @@ script:
     then:
       - if:
           condition:
-            not:
-              - voice_assistant.is_running:
+            and:
+              - not:
+                  - voice_assistant.is_running:
+              - lambda: return id(wake_word_engine_location).state == "On device";
+          then:
+            - lambda: id(va).set_use_wake_word(false);
+            - micro_wake_word.start:
+      - if:
+          condition:
+            and:
+              - not:
+                  - voice_assistant.is_running:
+              - lambda: return id(wake_word_engine_location).state == "In Home Assistant";
           then:
             - lambda: id(va).set_use_wake_word(true);
             - voice_assistant.start_continuous:
 
   - id: stop_wake_word
     then:
-      - lambda: id(va).set_use_wake_word(false);
-      - voice_assistant.stop:
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).state == "In Home Assistant";
+          then:
+            - lambda: id(va).set_use_wake_word(false);
+            - voice_assistant.stop:
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).state == "On device";
+          then:
+            - micro_wake_word.stop:
 
   - id: set_idle_or_mute_phase
     then:
@@ -624,6 +664,66 @@ switch:
     restore_mode: ALWAYS_OFF
     on_turn_off:
       - rtttl.stop:
+
+# ============================================
+# Select Components
+# ============================================
+select:
+  - platform: template
+    entity_category: config
+    name: Wake word engine location
+    id: wake_word_engine_location
+    icon: "mdi:account-voice"
+    optimistic: true
+    restore_value: true
+    options:
+      - In Home Assistant
+      - On device
+    initial_option: On device
+    on_value:
+      - if:
+          condition:
+            lambda: return !id(init_in_progress);
+          then:
+            - wait_until:
+                lambda: return id(voice_assistant_phase) == ${voice_assist_muted_phase_id} || id(voice_assistant_phase) == ${voice_assist_idle_phase_id};
+            - if:
+                condition:
+                  lambda: return x == "In Home Assistant";
+                then:
+                  - micro_wake_word.stop
+                  - delay: 500ms
+                  - if:
+                      condition:
+                        switch.is_off: mute
+                      then:
+                        - lambda: id(va).set_use_wake_word(true);
+                        - voice_assistant.start_continuous:
+            - if:
+                condition:
+                  lambda: return x == "On device";
+                then:
+                  - lambda: id(va).set_use_wake_word(false);
+                  - voice_assistant.stop
+                  - delay: 500ms
+                  - if:
+                      condition:
+                        switch.is_off: mute
+                      then:
+                        - micro_wake_word.start
+
+  - platform: template
+    entity_category: config
+    name: Wake word model
+    id: wake_word_model
+    icon: "mdi:microphone-message"
+    optimistic: true
+    restore_value: true
+    options:
+      - hey_jarvis
+      - okay_nabu
+      - alexa
+    initial_option: hey_jarvis
 
 # ============================================
 # Binary Sensors
@@ -702,6 +802,92 @@ text_sensor:
     icon: "mdi:cog"
     lambda: |-
       return id(button_2_service) + std::string(" -> ") + id(button_2_entity);
+
+# ============================================
+# Text Input Components
+# ============================================
+text:
+  - platform: template
+    name: "Button 1 Label"
+    id: button_1_label_input
+    icon: "mdi:label"
+    optimistic: true
+    min_length: 1
+    max_length: 20
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_1_label_text) = x;
+          auto lbl = id(action_button_1_label);
+          lv_label_set_text(lbl, x.c_str());
+
+  - platform: template
+    name: "Button 1 Service"
+    id: button_1_service_input
+    icon: "mdi:cog"
+    optimistic: true
+    min_length: 1
+    max_length: 50
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_1_service) = x;
+
+  - platform: template
+    name: "Button 1 Entity"
+    id: button_1_entity_input
+    icon: "mdi:home-automation"
+    optimistic: true
+    min_length: 1
+    max_length: 50
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_1_entity) = x;
+
+  - platform: template
+    name: "Button 2 Label"
+    id: button_2_label_input
+    icon: "mdi:label"
+    optimistic: true
+    min_length: 1
+    max_length: 20
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_2_label_text) = x;
+          auto lbl = id(action_button_2_label);
+          lv_label_set_text(lbl, x.c_str());
+
+  - platform: template
+    name: "Button 2 Service"
+    id: button_2_service_input
+    icon: "mdi:cog"
+    optimistic: true
+    min_length: 1
+    max_length: 50
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_2_service) = x;
+
+  - platform: template
+    name: "Button 2 Entity"
+    id: button_2_entity_input
+    icon: "mdi:home-automation"
+    optimistic: true
+    min_length: 1
+    max_length: 50
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_2_entity) = x;
 
 # ============================================
 # Globals
