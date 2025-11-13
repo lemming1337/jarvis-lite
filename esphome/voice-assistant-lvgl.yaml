@@ -154,9 +154,8 @@ lvgl:
             x: 0
             y: 40
             width: 240
-            height: 40
             text: "READY"
-            align: center
+            text_align: center
             text_color: 0xFFFFFF
 
         # Icon/Status-Indikator (großer Kreis in der Mitte)
@@ -170,15 +169,13 @@ lvgl:
             radius: 50
             border_width: 3
             border_color: 0xFFFFFF
-
-        # Status Icon (zentriert im Indikator)
-        - label:
-            id: status_icon
-            x: 120
-            y: 170
-            text: "💤"
-            align: center
-            text_color: 0xFFFFFF
+            widgets:
+              # Status Icon (zentriert im Indikator)
+              - label:
+                  id: status_icon
+                  align: center
+                  text: "💤"
+                  text_color: 0xFFFFFF
 
         # Request/Response Text Box
         - obj:
@@ -191,15 +188,13 @@ lvgl:
             radius: 5
             border_width: 1
             border_color: 0x404040
-
-        # Request/Response Label
-        - label:
-            id: request_label
-            x: 120
-            y: 255
-            text: ""
-            align: center
-            text_color: 0xCCCCCC
+            widgets:
+              # Request/Response Label
+              - label:
+                  id: request_label
+                  align: center
+                  text: ""
+                  text_color: 0xCCCCCC
 
         # Timer Container
         - obj:
@@ -213,27 +208,13 @@ lvgl:
             border_width: 2
             border_color: 0x00FF00
             hidden: true
-
-        # Timer Label
-        - label:
-            id: timer_label
-            x: 120
-            y: 160
-            text: "00:00"
-            align: center
-            text_color: 0x00FF00
-            hidden: true
-
-        # Timer Progress Bar Container
-        - obj:
-            id: timer_bar_container
-            x: 0
-            y: 305
-            width: 240
-            height: 15
-            bg_color: 0x1e1e1e
-            border_width: 0
-            hidden: true
+            widgets:
+              # Timer Label
+              - label:
+                  id: timer_label
+                  align: center
+                  text: "00:00"
+                  text_color: 0x00FF00
 
         # Timer Progress Bar
         - bar:
@@ -421,7 +402,6 @@ script:
           auto request_label = id(request_label);
           auto connection_label = id(connection_label);
           auto timer_container = id(timer_container);
-          auto timer_bar_container = id(timer_bar_container);
           auto timer_label = id(timer_label);
           auto timer_progress = id(timer_progress);
 
@@ -523,7 +503,7 @@ script:
                 timer_progress->set_value(progress);
 
                 timer_container->clear_flag(LV_OBJ_FLAG_HIDDEN);
-                timer_bar_container->clear_flag(LV_OBJ_FLAG_HIDDEN);
+                timer_progress->clear_flag(LV_OBJ_FLAG_HIDDEN);
                 break;
               }
             }
@@ -531,7 +511,7 @@ script:
 
           if (!has_active_timer) {
             timer_container->add_flag(LV_OBJ_FLAG_HIDDEN);
-            timer_bar_container->add_flag(LV_OBJ_FLAG_HIDDEN);
+            timer_progress->add_flag(LV_OBJ_FLAG_HIDDEN);
           }
 
   - id: start_wake_word
