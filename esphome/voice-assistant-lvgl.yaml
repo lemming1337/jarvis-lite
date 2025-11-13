@@ -139,6 +139,7 @@ lvgl:
   text_color: 0xFFFFFF
   border_width: 0
   outline_width: 0
+  buffer_size: 25%  # Nutze nur 25% des Displays als Buffer (spart RAM)
   displays:
     - main_display
   touchscreens:
