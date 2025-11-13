@@ -251,22 +251,18 @@ lvgl:
             hidden: true
 
         # Mute Button
-        - btn:
+        - button:
             id: mute_button
             x: 10
             y: 280
             width: 60
             height: 35
-            bg_color: 0x1e1e1e
             on_click:
               - switch.toggle: mute
-
-        # Mute Button Label
-        - label:
-            x: 40
-            y: 297
-            text: "MUTE"
-            text_color: 0xFFFFFF
+            widgets:
+              - label:
+                  text: "MUTE"
+                  align: center
 
         # Connection Status
         - label:
