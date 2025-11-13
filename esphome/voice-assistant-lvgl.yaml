@@ -407,72 +407,72 @@ script:
 
           // Connection Status
           if (!id(wifi_connected)) {
-            lbl_connection->set_text("○ WiFi");
-            lbl_connection->set_text_color(lv_color_hex(0xFF0000));
+            lv_label_set_text(lbl_connection, "○ WiFi");
+            lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0xFF0000), 0);
           } else if (!id(api_connected)) {
-            lbl_connection->set_text("○ HA");
-            lbl_connection->set_text_color(lv_color_hex(0xFFAA00));
+            lv_label_set_text(lbl_connection, "○ HA");
+            lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0xFFAA00), 0);
           } else {
-            lbl_connection->set_text("● OK");
-            lbl_connection->set_text_color(lv_color_hex(0x00FF00));
+            lv_label_set_text(lbl_connection, "● OK");
+            lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0x00FF00), 0);
           }
 
           // Phase-basiertes UI Update
           switch(id(voice_assistant_phase)) {
             case ${voice_assist_listening_phase_id}:
-              lbl_status->set_text("LISTENING");
-              ind_status->set_style_bg_color(lv_color_hex(0x00FF00), 0);
-              ico_status->set_text("🎤");
-              lbl_request->set_text("Listening...");
+              lv_label_set_text(lbl_status, "LISTENING");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x00FF00), 0);
+              lv_label_set_text(ico_status, "🎤");
+              lv_label_set_text(lbl_request, "Listening...");
               break;
 
             case ${voice_assist_thinking_phase_id}:
-              lbl_status->set_text("THINKING");
-              ind_status->set_style_bg_color(lv_color_hex(0xFFAA00), 0);
-              ico_status->set_text("🤔");
-              lbl_request->set_text(id(text_request).state.c_str());
+              lv_label_set_text(lbl_status, "THINKING");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFFAA00), 0);
+              lv_label_set_text(ico_status, "🤔");
+              lv_label_set_text(lbl_request, id(text_request).state.c_str());
               break;
 
             case ${voice_assist_replying_phase_id}:
-              lbl_status->set_text("REPLYING");
-              ind_status->set_style_bg_color(lv_color_hex(0x0080FF), 0);
-              ico_status->set_text("💬");
-              lbl_request->set_text(id(text_response).state.c_str());
+              lv_label_set_text(lbl_status, "REPLYING");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
+              lv_label_set_text(ico_status, "💬");
+              lv_label_set_text(lbl_request, id(text_response).state.c_str());
               break;
 
             case ${voice_assist_error_phase_id}:
-              lbl_status->set_text("ERROR");
-              ind_status->set_style_bg_color(lv_color_hex(0xFF0000), 0);
-              ico_status->set_text("❌");
-              lbl_request->set_text("Error occurred");
+              lv_label_set_text(lbl_status, "ERROR");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
+              lv_label_set_text(ico_status, "❌");
+              lv_label_set_text(lbl_request, "Error occurred");
               break;
 
             case ${voice_assist_muted_phase_id}:
-              lbl_status->set_text("MUTED");
-              ind_status->set_style_bg_color(lv_color_hex(0x404040), 0);
-              ico_status->set_text("🔇");
-              lbl_request->set_text("Microphone muted");
+              lv_label_set_text(lbl_status, "MUTED");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x404040), 0);
+              lv_label_set_text(ico_status, "🔇");
+              lv_label_set_text(lbl_request, "Microphone muted");
               break;
 
             case ${voice_assist_not_ready_phase_id}:
-              lbl_status->set_text("NOT READY");
-              ind_status->set_style_bg_color(lv_color_hex(0xFF0000), 0);
-              ico_status->set_text("⚠");
-              lbl_request->set_text("Connecting...");
+              lv_label_set_text(lbl_status, "NOT READY");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
+              lv_label_set_text(ico_status, "⚠");
+              lv_label_set_text(lbl_request, "Connecting...");
               break;
 
             case ${voice_assist_timer_finished_phase_id}:
-              lbl_status->set_text("TIMER DONE");
-              ind_status->set_style_bg_color(lv_color_hex(0xFF00FF), 0);
-              ico_status->set_text("⏰");
-              lbl_request->set_text("Timer finished!");
+              lv_label_set_text(lbl_status, "TIMER DONE");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF00FF), 0);
+              lv_label_set_text(ico_status, "⏰");
+              lv_label_set_text(lbl_request, "Timer finished!");
               break;
 
             default:  // IDLE
-              lbl_status->set_text("READY");
-              ind_status->set_style_bg_color(lv_color_hex(0x0080FF), 0);
-              ico_status->set_text("💤");
-              lbl_request->set_text("Say 'Hey Jarvis'");
+              lv_label_set_text(lbl_status, "READY");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
+              lv_label_set_text(ico_status, "💤");
+              lv_label_set_text(lbl_request, "Say 'Hey Jarvis'");
           }
 
           // Timer Display
@@ -493,25 +493,25 @@ script:
                 } else {
                   snprintf(time_str, sizeof(time_str), "%02d:%02d", minutes, seconds);
                 }
-                lbl_timer->set_text(time_str);
+                lv_label_set_text(lbl_timer, time_str);
 
                 // Progress berechnen
                 int progress = 100;
                 if (timer.second.total_seconds > 0) {
                   progress = (timer.second.seconds_left * 100) / timer.second.total_seconds;
                 }
-                bar_timer->set_value(progress);
+                lv_bar_set_value(bar_timer, progress, LV_ANIM_OFF);
 
-                cont_timer->clear_flag(LV_OBJ_FLAG_HIDDEN);
-                bar_timer->clear_flag(LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(cont_timer, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(bar_timer, LV_OBJ_FLAG_HIDDEN);
                 break;
               }
             }
           }
 
           if (!has_active_timer) {
-            cont_timer->add_flag(LV_OBJ_FLAG_HIDDEN);
-            bar_timer->add_flag(LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(cont_timer, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(bar_timer, LV_OBJ_FLAG_HIDDEN);
           }
 
   - id: start_wake_word
