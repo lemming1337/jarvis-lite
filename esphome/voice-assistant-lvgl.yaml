@@ -212,11 +212,13 @@ lvgl:
             text_color: 0xFFFFFF
 
         # Connection Status (rechts oben)
-        - image:
-            id: connection_icon
+        - label:
+            id: connection_label
             x: 285
             y: 15
-            src: icon_check
+            text: "\U000F012C"  # mdi:check-circle
+            text_color: 0x00FF00
+            text_font: font_icons_small
 
         # Icon/Status-Indikator (Kreis links, vertikal zentriert)
         - obj:
@@ -231,10 +233,12 @@ lvgl:
             border_color: 0xFFFFFF
             widgets:
               # Status Icon (zentriert im Indikator)
-              - image:
+              - label:
                   id: status_icon
                   align: center
-                  src: icon_sleep
+                  text: "\U000F098F"  # mdi:sleep
+                  text_color: 0xFFFFFF
+                  text_font: font_icons_large
 
         # Request/Response Text Box (rechts neben dem Indikator)
         - obj:
@@ -453,24 +457,21 @@ script:
           auto ind_status = id(status_indicator);
           auto ico_status = id(status_icon);
           auto lbl_request = id(request_label);
-          auto img_connection = id(connection_icon);
+          auto lbl_connection = id(connection_label);
           auto cont_timer = id(timer_container);
           auto lbl_timer = id(timer_label);
           auto bar_timer = id(timer_progress);
 
           // Connection Status
           if (!id(wifi_connected)) {
-            lv_img_set_src(img_connection, &icon_wifi);
-            lv_obj_set_style_img_recolor_opa(img_connection, 255, 0);
-            lv_obj_set_style_img_recolor(img_connection, lv_color_hex(0xFF0000), 0);
+            lv_label_set_text(lbl_connection, "\U000F05A9");  // mdi:wifi
+            lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0xFF0000), 0);
           } else if (!id(api_connected)) {
-            lv_img_set_src(img_connection, &icon_home_assistant);
-            lv_obj_set_style_img_recolor_opa(img_connection, 255, 0);
-            lv_obj_set_style_img_recolor(img_connection, lv_color_hex(0xFFAA00), 0);
+            lv_label_set_text(lbl_connection, "\U000F07D0");  // mdi:home
+            lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0xFFAA00), 0);
           } else {
-            lv_img_set_src(img_connection, &icon_check);
-            lv_obj_set_style_img_recolor_opa(img_connection, 255, 0);
-            lv_obj_set_style_img_recolor(img_connection, lv_color_hex(0x00FF00), 0);
+            lv_label_set_text(lbl_connection, "\U000F012C");  // mdi:check-circle
+            lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0x00FF00), 0);
           }
 
           // Phase-basiertes UI Update
@@ -478,56 +479,56 @@ script:
             case ${voice_assist_listening_phase_id}:
               lv_label_set_text(lbl_status, "LISTENING");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x00FF00), 0);
-              lv_img_set_src(ico_status, &icon_microphone);
+              lv_label_set_text(ico_status, "\U000F036C");  // mdi:microphone
               lv_label_set_text(lbl_request, "Listening...");
               break;
 
             case ${voice_assist_thinking_phase_id}:
               lv_label_set_text(lbl_status, "THINKING");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFFAA00), 0);
-              lv_img_set_src(ico_status, &icon_dots);
+              lv_label_set_text(ico_status, "\U000F02A5");  // mdi:dots-horizontal
               lv_label_set_text(lbl_request, id(text_request).state.c_str());
               break;
 
             case ${voice_assist_replying_phase_id}:
               lv_label_set_text(lbl_status, "REPLYING");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
-              lv_img_set_src(ico_status, &icon_message);
+              lv_label_set_text(ico_status, "\U000F0627");  // mdi:message-text
               lv_label_set_text(lbl_request, id(text_response).state.c_str());
               break;
 
             case ${voice_assist_error_phase_id}:
               lv_label_set_text(lbl_status, "ERROR");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
-              lv_img_set_src(ico_status, &icon_alert);
+              lv_label_set_text(ico_status, "\U000F0026");  // mdi:alert-circle
               lv_label_set_text(lbl_request, "Error occurred");
               break;
 
             case ${voice_assist_muted_phase_id}:
               lv_label_set_text(lbl_status, "MUTED");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x404040), 0);
-              lv_img_set_src(ico_status, &icon_mic_off);
+              lv_label_set_text(ico_status, "\U000F036D");  // mdi:microphone-off
               lv_label_set_text(lbl_request, "Microphone muted");
               break;
 
             case ${voice_assist_not_ready_phase_id}:
               lv_label_set_text(lbl_status, "NOT READY");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
-              lv_img_set_src(ico_status, &icon_alert);
+              lv_label_set_text(ico_status, "\U000F0026");  // mdi:alert-circle
               lv_label_set_text(lbl_request, "Connecting...");
               break;
 
             case ${voice_assist_timer_finished_phase_id}:
               lv_label_set_text(lbl_status, "TIMER DONE");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF00FF), 0);
-              lv_img_set_src(ico_status, &icon_timer);
+              lv_label_set_text(ico_status, "\U000F0954");  // mdi:timer
               lv_label_set_text(lbl_request, "Timer finished!");
               break;
 
             default:  // IDLE
               lv_label_set_text(lbl_status, "READY");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
-              lv_img_set_src(ico_status, &icon_sleep);
+              lv_label_set_text(ico_status, "\U000F098F");  // mdi:sleep
               lv_label_set_text(lbl_request, "Say 'Hey Jarvis'");
           }
 
@@ -846,52 +847,46 @@ text:
           id(button_2_automation) = x;
 
 # ============================================
-# Icon Images (Material Design Icons as PNG)
+# Fonts with Icon Support
 # ============================================
-image:
-  # Status icons (64x64)
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/microphone.png
-    id: icon_microphone
-    resize: 64x64
-    type: RGB24
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/sleep.png
-    id: icon_sleep
-    resize: 64x64
-    type: RGB24
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/dots-horizontal.png
-    id: icon_dots
-    resize: 64x64
-    type: RGB24
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/message-text.png
-    id: icon_message
-    resize: 64x64
-    type: RGB24
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/alert-circle.png
-    id: icon_alert
-    resize: 64x64
-    type: RGB24
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/microphone-off.png
-    id: icon_mic_off
-    resize: 64x64
-    type: RGB24
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/timer.png
-    id: icon_timer
-    resize: 64x64
-    type: RGB24
+font:
+  # Large font for status icons (64px)
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_icons_large
+    size: 64
+    bpp: 4
+    glyphs: " "
+    extras:
+      - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf
+        glyphs: [
+          "\U000F036C",  # mdi:microphone
+          "\U000F098F",  # mdi:sleep
+          "\U000F02A5",  # mdi:dots-horizontal
+          "\U000F0627",  # mdi:message-text
+          "\U000F0026",  # mdi:alert-circle
+          "\U000F036D",  # mdi:microphone-off
+          "\U000F0954",  # mdi:timer
+        ]
 
-  # Connection status icons (20x20)
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/wifi.png
-    id: icon_wifi
-    resize: 20x20
-    type: RGB24
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/home-assistant.png
-    id: icon_home_assistant
-    resize: 20x20
-    type: RGB24
-  - file: https://raw.githubusercontent.com/Templarian/MaterialDesign-PNG/master/icons/check-circle.png
-    id: icon_check
-    resize: 20x20
-    type: RGB24
+  # Small font for connection status (20px)
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_icons_small
+    size: 20
+    bpp: 4
+    glyphs: " "
+    extras:
+      - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf
+        glyphs: [
+          "\U000F05A9",  # mdi:wifi
+          "\U000F07D0",  # mdi:home
+          "\U000F012C",  # mdi:check-circle
+        ]
 
 # ============================================
 # Globals
