@@ -396,83 +396,83 @@ script:
     then:
       - lambda: |-
           // Status-Updates basierend auf Phase
-          auto status_label = id(status_label);
-          auto status_indicator = id(status_indicator);
-          auto status_icon = id(status_icon);
-          auto request_label = id(request_label);
-          auto connection_label = id(connection_label);
-          auto timer_container = id(timer_container);
-          auto timer_label = id(timer_label);
-          auto timer_progress = id(timer_progress);
+          auto lbl_status = id(status_label);
+          auto ind_status = id(status_indicator);
+          auto ico_status = id(status_icon);
+          auto lbl_request = id(request_label);
+          auto lbl_connection = id(connection_label);
+          auto cont_timer = id(timer_container);
+          auto lbl_timer = id(timer_label);
+          auto bar_timer = id(timer_progress);
 
           // Connection Status
           if (!id(wifi_connected)) {
-            connection_label->set_text("○ WiFi");
-            connection_label->set_text_color(lv_color_hex(0xFF0000));
+            lbl_connection->set_text("○ WiFi");
+            lbl_connection->set_text_color(lv_color_hex(0xFF0000));
           } else if (!id(api_connected)) {
-            connection_label->set_text("○ HA");
-            connection_label->set_text_color(lv_color_hex(0xFFAA00));
+            lbl_connection->set_text("○ HA");
+            lbl_connection->set_text_color(lv_color_hex(0xFFAA00));
           } else {
-            connection_label->set_text("● OK");
-            connection_label->set_text_color(lv_color_hex(0x00FF00));
+            lbl_connection->set_text("● OK");
+            lbl_connection->set_text_color(lv_color_hex(0x00FF00));
           }
 
           // Phase-basiertes UI Update
           switch(id(voice_assistant_phase)) {
             case ${voice_assist_listening_phase_id}:
-              status_label->set_text("LISTENING");
-              status_indicator->set_style_bg_color(lv_color_hex(0x00FF00), 0);
-              status_icon->set_text("🎤");
-              request_label->set_text("Listening...");
+              lbl_status->set_text("LISTENING");
+              ind_status->set_style_bg_color(lv_color_hex(0x00FF00), 0);
+              ico_status->set_text("🎤");
+              lbl_request->set_text("Listening...");
               break;
 
             case ${voice_assist_thinking_phase_id}:
-              status_label->set_text("THINKING");
-              status_indicator->set_style_bg_color(lv_color_hex(0xFFAA00), 0);
-              status_icon->set_text("🤔");
-              request_label->set_text(id(text_request).state.c_str());
+              lbl_status->set_text("THINKING");
+              ind_status->set_style_bg_color(lv_color_hex(0xFFAA00), 0);
+              ico_status->set_text("🤔");
+              lbl_request->set_text(id(text_request).state.c_str());
               break;
 
             case ${voice_assist_replying_phase_id}:
-              status_label->set_text("REPLYING");
-              status_indicator->set_style_bg_color(lv_color_hex(0x0080FF), 0);
-              status_icon->set_text("💬");
-              request_label->set_text(id(text_response).state.c_str());
+              lbl_status->set_text("REPLYING");
+              ind_status->set_style_bg_color(lv_color_hex(0x0080FF), 0);
+              ico_status->set_text("💬");
+              lbl_request->set_text(id(text_response).state.c_str());
               break;
 
             case ${voice_assist_error_phase_id}:
-              status_label->set_text("ERROR");
-              status_indicator->set_style_bg_color(lv_color_hex(0xFF0000), 0);
-              status_icon->set_text("❌");
-              request_label->set_text("Error occurred");
+              lbl_status->set_text("ERROR");
+              ind_status->set_style_bg_color(lv_color_hex(0xFF0000), 0);
+              ico_status->set_text("❌");
+              lbl_request->set_text("Error occurred");
               break;
 
             case ${voice_assist_muted_phase_id}:
-              status_label->set_text("MUTED");
-              status_indicator->set_style_bg_color(lv_color_hex(0x404040), 0);
-              status_icon->set_text("🔇");
-              request_label->set_text("Microphone muted");
+              lbl_status->set_text("MUTED");
+              ind_status->set_style_bg_color(lv_color_hex(0x404040), 0);
+              ico_status->set_text("🔇");
+              lbl_request->set_text("Microphone muted");
               break;
 
             case ${voice_assist_not_ready_phase_id}:
-              status_label->set_text("NOT READY");
-              status_indicator->set_style_bg_color(lv_color_hex(0xFF0000), 0);
-              status_icon->set_text("⚠");
-              request_label->set_text("Connecting...");
+              lbl_status->set_text("NOT READY");
+              ind_status->set_style_bg_color(lv_color_hex(0xFF0000), 0);
+              ico_status->set_text("⚠");
+              lbl_request->set_text("Connecting...");
               break;
 
             case ${voice_assist_timer_finished_phase_id}:
-              status_label->set_text("TIMER DONE");
-              status_indicator->set_style_bg_color(lv_color_hex(0xFF00FF), 0);
-              status_icon->set_text("⏰");
-              request_label->set_text("Timer finished!");
+              lbl_status->set_text("TIMER DONE");
+              ind_status->set_style_bg_color(lv_color_hex(0xFF00FF), 0);
+              ico_status->set_text("⏰");
+              lbl_request->set_text("Timer finished!");
               break;
 
             default:  // IDLE
-              status_label->set_text("READY");
-              status_indicator->set_style_bg_color(lv_color_hex(0x0080FF), 0);
-              status_icon->set_text("💤");
-              request_label->set_text("Say 'Hey Jarvis'");
+              lbl_status->set_text("READY");
+              ind_status->set_style_bg_color(lv_color_hex(0x0080FF), 0);
+              ico_status->set_text("💤");
+              lbl_request->set_text("Say 'Hey Jarvis'");
           }
 
           // Timer Display
@@ -493,25 +493,25 @@ script:
                 } else {
                   snprintf(time_str, sizeof(time_str), "%02d:%02d", minutes, seconds);
                 }
-                timer_label->set_text(time_str);
+                lbl_timer->set_text(time_str);
 
                 // Progress berechnen
                 int progress = 100;
                 if (timer.second.total_seconds > 0) {
                   progress = (timer.second.seconds_left * 100) / timer.second.total_seconds;
                 }
-                timer_progress->set_value(progress);
+                bar_timer->set_value(progress);
 
-                timer_container->clear_flag(LV_OBJ_FLAG_HIDDEN);
-                timer_progress->clear_flag(LV_OBJ_FLAG_HIDDEN);
+                cont_timer->clear_flag(LV_OBJ_FLAG_HIDDEN);
+                bar_timer->clear_flag(LV_OBJ_FLAG_HIDDEN);
                 break;
               }
             }
           }
 
           if (!has_active_timer) {
-            timer_container->add_flag(LV_OBJ_FLAG_HIDDEN);
-            timer_progress->add_flag(LV_OBJ_FLAG_HIDDEN);
+            cont_timer->add_flag(LV_OBJ_FLAG_HIDDEN);
+            bar_timer->add_flag(LV_OBJ_FLAG_HIDDEN);
           }
 
   - id: start_wake_word
