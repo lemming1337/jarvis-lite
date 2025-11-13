@@ -679,27 +679,29 @@ text_sensor:
     platform: template
     name: "Action Button 1 Label"
     icon: "mdi:label"
-    lambda: return id(button_1_label_text).c_str();
+    lambda: |-
+      return id(button_1_label_text);
 
   - id: ha_action_2_label
     platform: template
     name: "Action Button 2 Label"
     icon: "mdi:label"
-    lambda: return id(button_2_label_text).c_str();
+    lambda: |-
+      return id(button_2_label_text);
 
   - id: ha_action_1_config
     platform: template
     name: "Action Button 1 Config"
     icon: "mdi:cog"
     lambda: |-
-      return id(button_1_service) + " -> " + id(button_1_entity);
+      return id(button_1_service) + std::string(" -> ") + id(button_1_entity);
 
   - id: ha_action_2_config
     platform: template
     name: "Action Button 2 Config"
     icon: "mdi:cog"
     lambda: |-
-      return id(button_2_service) + " -> " + id(button_2_entity);
+      return id(button_2_service) + std::string(" -> ") + id(button_2_entity);
 
 # ============================================
 # Globals
