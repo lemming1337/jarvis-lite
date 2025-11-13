@@ -246,7 +246,8 @@ lvgl:
             max_value: 100
             value: 0
             bg_color: 0x1e1e1e
-            indicator_color: 0x00FF00
+            indicator:
+              bg_color: 0x00FF00
             hidden: true
 
         # Mute Button
