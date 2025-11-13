@@ -27,6 +27,11 @@ esphome:
       - delay: 2s
       - lambda: |-
           id(init_in_progress) = false;
+          // Initialize button labels
+          auto lbl1 = id(action_button_1_label);
+          lv_label_set_text(lbl1, id(button_1_label_text).value().c_str());
+          auto lbl2 = id(action_button_2_label);
+          lv_label_set_text(lbl2, id(button_2_label_text).value().c_str());
           id(update_ui).execute();
       - lvgl.resume:
 
@@ -53,6 +58,31 @@ api:
   on_client_disconnected:
     - lambda: id(api_connected) = false;
     - script.execute: update_ui
+  actions:
+    - action: set_button_1_config
+      variables:
+        label: string
+        service: string
+        entity: string
+      then:
+        - lambda: |-
+            id(button_1_label_text).value() = label;
+            id(button_1_service).value() = service;
+            id(button_1_entity).value() = entity;
+            auto lbl = id(action_button_1_label);
+            lv_label_set_text(lbl, label.c_str());
+    - action: set_button_2_config
+      variables:
+        label: string
+        service: string
+        entity: string
+      then:
+        - lambda: |-
+            id(button_2_label_text).value() = label;
+            id(button_2_service).value() = service;
+            id(button_2_entity).value() = entity;
+            auto lbl = id(action_button_2_label);
+            lv_label_set_text(lbl, label.c_str());
 
 wifi:
   ssid: !secret wifi_ssid
@@ -153,21 +183,69 @@ lvgl:
   pages:
     - id: main_page
       widgets:
-        # Status Label (zentriert oben)
+        # Action Button 1 (links oben)
+        - button:
+            id: action_button_1
+            x: 5
+            y: 5
+            width: 80
+            height: 35
+            bg_color: 0x2196F3
+            on_click:
+              - homeassistant.service:
+                  service: !lambda return id(button_1_service).value().c_str();
+                  data:
+                    entity_id: !lambda return id(button_1_entity).value().c_str();
+            widgets:
+              - label:
+                  id: action_button_1_label
+                  align: center
+                  text: !lambda return id(button_1_label_text).value().c_str();
+                  text_color: 0xFFFFFF
+
+        # Action Button 2 (rechts oben)
+        - button:
+            id: action_button_2
+            x: 95
+            y: 5
+            width: 80
+            height: 35
+            bg_color: 0x4CAF50
+            on_click:
+              - homeassistant.service:
+                  service: !lambda return id(button_2_service).value().c_str();
+                  data:
+                    entity_id: !lambda return id(button_2_entity).value().c_str();
+            widgets:
+              - label:
+                  id: action_button_2_label
+                  align: center
+                  text: !lambda return id(button_2_label_text).value().c_str();
+                  text_color: 0xFFFFFF
+
+        # Status Label (oben Mitte-Rechts)
         - label:
             id: status_label
-            x: 0
-            y: 40
-            width: 240
+            x: 180
+            y: 15
+            width: 100
             text: "READY"
             text_align: center
             text_color: 0xFFFFFF
 
-        # Icon/Status-Indikator (großer Kreis in der Mitte)
+        # Connection Status (rechts oben)
+        - label:
+            id: connection_label
+            x: 285
+            y: 15
+            text: "●"
+            text_color: 0x00FF00
+
+        # Icon/Status-Indikator (Kreis links, vertikal zentriert)
         - obj:
             id: status_indicator
-            x: 70
-            y: 120
+            x: 20
+            y: 70
             width: 100
             height: 100
             bg_color: 0x0080FF
@@ -182,13 +260,13 @@ lvgl:
                   text: "💤"
                   text_color: 0xFFFFFF
 
-        # Request/Response Text Box
+        # Request/Response Text Box (rechts neben dem Indikator)
         - obj:
             id: text_container
-            x: 10
-            y: 230
-            width: 220
-            height: 50
+            x: 130
+            y: 55
+            width: 185
+            height: 130
             bg_color: 0x1e1e1e
             radius: 5
             border_width: 1
@@ -201,13 +279,13 @@ lvgl:
                   text: ""
                   text_color: 0xCCCCCC
 
-        # Timer Container
+        # Timer Container (über dem Status-Indikator)
         - obj:
             id: timer_container
-            x: 60
-            y: 140
+            x: 10
+            y: 180
             width: 120
-            height: 40
+            height: 35
             bg_color: 0x1e1e1e
             radius: 5
             border_width: 2
@@ -221,12 +299,12 @@ lvgl:
                   text: "00:00"
                   text_color: 0x00FF00
 
-        # Timer Progress Bar
+        # Timer Progress Bar (unten)
         - bar:
             id: timer_progress
             x: 0
-            y: 305
-            width: 240
+            y: 225
+            width: 320
             height: 15
             min_value: 0
             max_value: 100
@@ -236,11 +314,11 @@ lvgl:
               bg_color: 0x00FF00
             hidden: true
 
-        # Mute Button
+        # Mute Button (unten rechts)
         - button:
             id: mute_button
-            x: 10
-            y: 280
+            x: 255
+            y: 195
             width: 60
             height: 35
             on_click:
@@ -249,14 +327,6 @@ lvgl:
               - label:
                   text: "MUTE"
                   align: center
-
-        # Connection Status
-        - label:
-            id: connection_label
-            x: 200
-            y: 290
-            text: "●"
-            text_color: 0x00FF00
 
 # ============================================
 # Buzzer Configuration
@@ -604,6 +674,35 @@ text_sensor:
           id(text_response).state = (truncated + "...").c_str();
         }
 
+  # Home Assistant Action Button Text Sensors (read-only status)
+  - id: ha_action_1_label
+    platform: template
+    name: "Action Button 1 Label"
+    icon: "mdi:label"
+    lambda: |-
+      return id(button_1_label_text).value();
+
+  - id: ha_action_2_label
+    platform: template
+    name: "Action Button 2 Label"
+    icon: "mdi:label"
+    lambda: |-
+      return id(button_2_label_text).value();
+
+  - id: ha_action_1_config
+    platform: template
+    name: "Action Button 1 Config"
+    icon: "mdi:cog"
+    lambda: |-
+      return id(button_1_service).value() + std::string(" -> ") + id(button_1_entity).value();
+
+  - id: ha_action_2_config
+    platform: template
+    name: "Action Button 2 Config"
+    icon: "mdi:cog"
+    lambda: |-
+      return id(button_2_service).value() + std::string(" -> ") + id(button_2_entity).value();
+
 # ============================================
 # Globals
 # ============================================
@@ -624,3 +723,31 @@ globals:
     type: bool
     restore_value: false
     initial_value: "false"
+
+  # Button 1 Configuration
+  - id: button_1_label_text
+    type: std::string
+    restore_value: true
+    initial_value: '"Light 1"'
+  - id: button_1_service
+    type: std::string
+    restore_value: true
+    initial_value: '"light.toggle"'
+  - id: button_1_entity
+    type: std::string
+    restore_value: true
+    initial_value: '"light.living_room"'
+
+  # Button 2 Configuration
+  - id: button_2_label_text
+    type: std::string
+    restore_value: true
+    initial_value: '"Light 2"'
+  - id: button_2_service
+    type: std::string
+    restore_value: true
+    initial_value: '"light.toggle"'
+  - id: button_2_entity
+    type: std::string
+    restore_value: true
+    initial_value: '"light.bedroom"'
