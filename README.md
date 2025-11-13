@@ -16,9 +16,27 @@ Ein Voice Assistant für Home Assistant mit **On-Device Wake Word Detection** ba
 - 🌐 **Zwei Wake Word Modes**: On-Device oder In Home Assistant
 - 📊 **Status-Pages**: Idle, Listening, Thinking, Replying, Error
 
+## 🎨 UI-Varianten
+
+Dieses Projekt bietet **zwei verschiedene UI-Implementierungen**:
+
+1. **Standard-Variante** (`voice-assistant.yaml`)
+   - Verwendet ILI9xxx Display Pages mit PNG-Bildern
+   - Bewährte Casita-Illustrationen
+   - Einfach zu verstehen und anzupassen
+
+2. **LVGL-Variante** (`voice-assistant-lvgl.yaml`) ⭐ **NEU**
+   - Modernes Widget-basiertes UI ohne große Bilddateien
+   - ~500KB weniger Flash-Speicher benötigt
+   - Flüssigere Animationen und bessere Performance
+   - **📖 [Zur LVGL-Dokumentation](docs/lvgl-variant.md)**
+
+Beide Varianten unterstützen alle Features (Wake Word, Timer, Mute, etc.).
+
 ## 📋 Inhaltsverzeichnis
 
 - [Features](#-features)
+- [UI-Varianten](#-ui-varianten)
 - [Hardware-Setup](#-hardware-setup)
 - [Software-Installation](#-software-installation)
 - [Wake Word Detection](#-wake-word-detection)
@@ -282,12 +300,17 @@ Das Display zeigt verschiedene Ansichten je nach Status (alle im 240x320 Portrai
 
 ## 📚 Weitere Ressourcen
 
+### Projekt-Dokumentation
+- **[LVGL-Variante](docs/lvgl-variant.md)** ⭐ - Modernes Widget-basiertes UI
 - **[Flash-Optimierung](docs/flash-optimization.md)** - Custom Partitions & No-OTA Setup ⚡
 - **[Wake Word Setup Guide](docs/wake-word-setup.md)** - Detaillierte Wake Word Dokumentation
 - **[Hardware Setup](docs/hardware-setup.md)** - Kompletter Anschlussplan
 - **[Pinout Reference](docs/pinout-reference.md)** - GPIO Pin-Belegung
+
+### Externe Ressourcen
 - [ESPHome Voice Assistant](https://esphome.io/components/voice_assistant.html)
 - [ESPHome micro_wake_word](https://esphome.io/components/micro_wake_word/)
+- [ESPHome LVGL Component](https://esphome.io/components/lvgl.html)
 - [Home Assistant Voice](https://www.home-assistant.io/voice_control/)
 - [S3-BOX Reference Config](https://github.com/esphome/wake-word-voice-assistants)
 - [AZ-Touch MOD Hardware](https://www.hwhardsoft.de/english/projects/arduitouch-esp/)
