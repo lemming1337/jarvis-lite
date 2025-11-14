@@ -58,31 +58,6 @@ api:
   on_client_disconnected:
     - lambda: id(api_connected) = false;
     - script.execute: update_ui
-  actions:
-    - action: set_button_1_config
-      variables:
-        label: string
-        service: string
-        entity: string
-      then:
-        - lambda: |-
-            id(button_1_label_text) = label;
-            id(button_1_service) = service;
-            id(button_1_entity) = entity;
-            auto lbl = id(action_button_1_label);
-            lv_label_set_text(lbl, label.c_str());
-    - action: set_button_2_config
-      variables:
-        label: string
-        service: string
-        entity: string
-      then:
-        - lambda: |-
-            id(button_2_label_text) = label;
-            id(button_2_service) = service;
-            id(button_2_entity) = entity;
-            auto lbl = id(action_button_2_label);
-            lv_label_set_text(lbl, label.c_str());
 
 wifi:
   ssid: !secret wifi_ssid
@@ -182,46 +157,53 @@ lvgl:
   # UI Pages
   pages:
     - id: main_page
+      scrollbar_mode: "off"  # Disable scrollbar
       widgets:
         # Action Button 1 (links oben)
         - button:
             id: action_button_1
             x: 5
             y: 5
-            width: 80
+            width: 70
             height: 35
             bg_color: 0x2196F3
             on_click:
-              - homeassistant.service:
-                  service: !lambda "return id(button_1_service);"
+              - logger.log: "Button 1 clicked"
+              - rtttl.play: "button:d=4,o=5,b=100:16e6"
+              - homeassistant.action:
+                  action: automation.trigger
                   data:
-                    entity_id: !lambda "return id(button_1_entity);"
+                    entity_id: !lambda "return id(button_1_automation);"
             widgets:
               - label:
                   id: action_button_1_label
                   align: center
                   text: !lambda "return id(button_1_label_text);"
                   text_color: 0xFFFFFF
+                  clickable: false
 
         # Action Button 2 (rechts oben)
         - button:
             id: action_button_2
-            x: 95
+            x: 85
             y: 5
-            width: 80
+            width: 70
             height: 35
             bg_color: 0x4CAF50
             on_click:
-              - homeassistant.service:
-                  service: !lambda "return id(button_2_service);"
+              - logger.log: "Button 2 clicked"
+              - rtttl.play: "button:d=4,o=5,b=100:16e6"
+              - homeassistant.action:
+                  action: automation.trigger
                   data:
-                    entity_id: !lambda "return id(button_2_entity);"
+                    entity_id: !lambda "return id(button_2_automation);"
             widgets:
               - label:
                   id: action_button_2_label
                   align: center
                   text: !lambda "return id(button_2_label_text);"
                   text_color: 0xFFFFFF
+                  clickable: false
 
         # Status Label (oben Mitte-Rechts)
         - label:
@@ -238,8 +220,9 @@ lvgl:
             id: connection_label
             x: 285
             y: 15
-            text: "●"
+            text: "\U000F012C"  # mdi:check-circle
             text_color: 0x00FF00
+            text_font: font_icons_small
 
         # Icon/Status-Indikator (Kreis links, vertikal zentriert)
         - obj:
@@ -257,8 +240,9 @@ lvgl:
               - label:
                   id: status_icon
                   align: center
-                  text: "💤"
+                  text: "\U000F098F"  # mdi:sleep
                   text_color: 0xFFFFFF
+                  text_font: font_icons_large
 
         # Request/Response Text Box (rechts neben dem Indikator)
         - obj:
@@ -354,11 +338,25 @@ microphone:
     i2s_audio_id: i2s_audio_bus
 
 # ============================================
+# Micro Wake Word (On-Device Wake Word Detection)
+# ============================================
+micro_wake_word:
+  id: mww
+  models:
+    - hey_jarvis
+    - okay_nabu
+    - alexa
+  on_wake_word_detected:
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+
+# ============================================
 # Voice Assistant
 # ============================================
 voice_assistant:
   id: va
   microphone: external_microphone
+  micro_wake_word: mww
   use_wake_word: true
   noise_suppression_level: 2
   auto_gain: 31dBFS
@@ -394,7 +392,12 @@ voice_assistant:
     - script.execute: update_ui
 
   on_end:
-    # OpenWakeWord läuft kontinuierlich - keine spezielle Behandlung nötig
+    - if:
+        condition:
+          - lambda: return id(wake_word_engine_location).state == "On device";
+        then:
+          - lambda: id(va).set_use_wake_word(false);
+          - micro_wake_word.start:
     - script.execute: set_idle_or_mute_phase
     - script.execute: update_ui
     - text_sensor.template.publish:
@@ -465,13 +468,13 @@ script:
 
           // Connection Status
           if (!id(wifi_connected)) {
-            lv_label_set_text(lbl_connection, "○ WiFi");
+            lv_label_set_text(lbl_connection, "\U000F05A9");  // mdi:wifi
             lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0xFF0000), 0);
           } else if (!id(api_connected)) {
-            lv_label_set_text(lbl_connection, "○ HA");
+            lv_label_set_text(lbl_connection, "\U000F07D0");  // mdi:home
             lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0xFFAA00), 0);
           } else {
-            lv_label_set_text(lbl_connection, "● OK");
+            lv_label_set_text(lbl_connection, "\U000F012C");  // mdi:check-circle
             lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0x00FF00), 0);
           }
 
@@ -480,56 +483,56 @@ script:
             case ${voice_assist_listening_phase_id}:
               lv_label_set_text(lbl_status, "LISTENING");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x00FF00), 0);
-              lv_label_set_text(ico_status, "🎤");
+              lv_label_set_text(ico_status, "\U000F036C");  // mdi:microphone
               lv_label_set_text(lbl_request, "Listening...");
               break;
 
             case ${voice_assist_thinking_phase_id}:
               lv_label_set_text(lbl_status, "THINKING");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFFAA00), 0);
-              lv_label_set_text(ico_status, "🤔");
+              lv_label_set_text(ico_status, "\U000F02A5");  // mdi:dots-horizontal
               lv_label_set_text(lbl_request, id(text_request).state.c_str());
               break;
 
             case ${voice_assist_replying_phase_id}:
               lv_label_set_text(lbl_status, "REPLYING");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
-              lv_label_set_text(ico_status, "💬");
+              lv_label_set_text(ico_status, "\U000F0627");  // mdi:message-text
               lv_label_set_text(lbl_request, id(text_response).state.c_str());
               break;
 
             case ${voice_assist_error_phase_id}:
               lv_label_set_text(lbl_status, "ERROR");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
-              lv_label_set_text(ico_status, "❌");
+              lv_label_set_text(ico_status, "\U000F0026");  // mdi:alert-circle
               lv_label_set_text(lbl_request, "Error occurred");
               break;
 
             case ${voice_assist_muted_phase_id}:
               lv_label_set_text(lbl_status, "MUTED");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x404040), 0);
-              lv_label_set_text(ico_status, "🔇");
+              lv_label_set_text(ico_status, "\U000F036D");  // mdi:microphone-off
               lv_label_set_text(lbl_request, "Microphone muted");
               break;
 
             case ${voice_assist_not_ready_phase_id}:
               lv_label_set_text(lbl_status, "NOT READY");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
-              lv_label_set_text(ico_status, "⚠");
+              lv_label_set_text(ico_status, "\U000F0026");  // mdi:alert-circle
               lv_label_set_text(lbl_request, "Connecting...");
               break;
 
             case ${voice_assist_timer_finished_phase_id}:
               lv_label_set_text(lbl_status, "TIMER DONE");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF00FF), 0);
-              lv_label_set_text(ico_status, "⏰");
+              lv_label_set_text(ico_status, "\U000F0954");  // mdi:timer
               lv_label_set_text(lbl_request, "Timer finished!");
               break;
 
             default:  // IDLE
               lv_label_set_text(lbl_status, "READY");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
-              lv_label_set_text(ico_status, "💤");
+              lv_label_set_text(ico_status, "\U000F098F");  // mdi:sleep
               lv_label_set_text(lbl_request, "Say 'Hey Jarvis'");
           }
 
@@ -576,16 +579,36 @@ script:
     then:
       - if:
           condition:
-            not:
-              - voice_assistant.is_running:
+            and:
+              - not:
+                  - voice_assistant.is_running:
+              - lambda: return id(wake_word_engine_location).state == "On device";
+          then:
+            - lambda: id(va).set_use_wake_word(false);
+            - micro_wake_word.start:
+      - if:
+          condition:
+            and:
+              - not:
+                  - voice_assistant.is_running:
+              - lambda: return id(wake_word_engine_location).state == "In Home Assistant";
           then:
             - lambda: id(va).set_use_wake_word(true);
             - voice_assistant.start_continuous:
 
   - id: stop_wake_word
     then:
-      - lambda: id(va).set_use_wake_word(false);
-      - voice_assistant.stop:
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).state == "In Home Assistant";
+          then:
+            - lambda: id(va).set_use_wake_word(false);
+            - voice_assistant.stop:
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).state == "On device";
+          then:
+            - micro_wake_word.stop:
 
   - id: set_idle_or_mute_phase
     then:
@@ -624,6 +647,66 @@ switch:
     restore_mode: ALWAYS_OFF
     on_turn_off:
       - rtttl.stop:
+
+# ============================================
+# Select Components
+# ============================================
+select:
+  - platform: template
+    entity_category: config
+    name: Wake word engine location
+    id: wake_word_engine_location
+    icon: "mdi:account-voice"
+    optimistic: true
+    restore_value: true
+    options:
+      - In Home Assistant
+      - On device
+    initial_option: On device
+    on_value:
+      - if:
+          condition:
+            lambda: return !id(init_in_progress);
+          then:
+            - wait_until:
+                lambda: return id(voice_assistant_phase) == ${voice_assist_muted_phase_id} || id(voice_assistant_phase) == ${voice_assist_idle_phase_id};
+            - if:
+                condition:
+                  lambda: return x == "In Home Assistant";
+                then:
+                  - micro_wake_word.stop
+                  - delay: 500ms
+                  - if:
+                      condition:
+                        switch.is_off: mute
+                      then:
+                        - lambda: id(va).set_use_wake_word(true);
+                        - voice_assistant.start_continuous:
+            - if:
+                condition:
+                  lambda: return x == "On device";
+                then:
+                  - lambda: id(va).set_use_wake_word(false);
+                  - voice_assistant.stop
+                  - delay: 500ms
+                  - if:
+                      condition:
+                        switch.is_off: mute
+                      then:
+                        - micro_wake_word.start
+
+  - platform: template
+    entity_category: config
+    name: Wake word model
+    id: wake_word_model
+    icon: "mdi:microphone-message"
+    optimistic: true
+    restore_value: true
+    options:
+      - hey_jarvis
+      - okay_nabu
+      - alexa
+    initial_option: hey_jarvis
 
 # ============================================
 # Binary Sensors
@@ -674,34 +757,140 @@ text_sensor:
           id(text_response).state = (truncated + "...").c_str();
         }
 
-  # Home Assistant Action Button Text Sensors (read-only status)
-  - id: ha_action_1_label
-    platform: template
-    name: "Action Button 1 Label"
+  # Button configuration status (read-only, shows current values)
+  - platform: template
+    name: "Button 1 Current Label"
     icon: "mdi:label"
     lambda: |-
       return id(button_1_label_text);
+    update_interval: 60s
 
-  - id: ha_action_2_label
-    platform: template
-    name: "Action Button 2 Label"
+  - platform: template
+    name: "Button 1 Current Automation"
+    icon: "mdi:robot"
+    lambda: |-
+      return id(button_1_automation);
+    update_interval: 60s
+
+  - platform: template
+    name: "Button 2 Current Label"
     icon: "mdi:label"
     lambda: |-
       return id(button_2_label_text);
+    update_interval: 60s
 
-  - id: ha_action_1_config
-    platform: template
-    name: "Action Button 1 Config"
-    icon: "mdi:cog"
+  - platform: template
+    name: "Button 2 Current Automation"
+    icon: "mdi:robot"
     lambda: |-
-      return id(button_1_service) + std::string(" -> ") + id(button_1_entity);
+      return id(button_2_automation);
+    update_interval: 60s
 
-  - id: ha_action_2_config
-    platform: template
-    name: "Action Button 2 Config"
-    icon: "mdi:cog"
-    lambda: |-
-      return id(button_2_service) + std::string(" -> ") + id(button_2_entity);
+# ============================================
+# Text Input Components
+# ============================================
+text:
+  - platform: template
+    name: "Button 1 Label"
+    id: button_1_label_input
+    icon: "mdi:label"
+    optimistic: true
+    min_length: 1
+    max_length: 20
+    mode: text
+    entity_category: config
+    initial_value: "Button 1"
+    on_value:
+      - lambda: |-
+          id(button_1_label_text) = x;
+          auto lbl = id(action_button_1_label);
+          lv_label_set_text(lbl, x.c_str());
+
+  - platform: template
+    name: "Button 1 Automation"
+    id: button_1_automation_input
+    icon: "mdi:robot"
+    optimistic: true
+    min_length: 1
+    max_length: 50
+    mode: text
+    entity_category: config
+    initial_value: "automation.example_1"
+    on_value:
+      - lambda: |-
+          id(button_1_automation) = x;
+
+  - platform: template
+    name: "Button 2 Label"
+    id: button_2_label_input
+    icon: "mdi:label"
+    optimistic: true
+    min_length: 1
+    max_length: 20
+    mode: text
+    entity_category: config
+    initial_value: "Button 2"
+    on_value:
+      - lambda: |-
+          id(button_2_label_text) = x;
+          auto lbl = id(action_button_2_label);
+          lv_label_set_text(lbl, x.c_str());
+
+  - platform: template
+    name: "Button 2 Automation"
+    id: button_2_automation_input
+    icon: "mdi:robot"
+    optimistic: true
+    min_length: 1
+    max_length: 50
+    mode: text
+    entity_category: config
+    initial_value: "automation.example_2"
+    on_value:
+      - lambda: |-
+          id(button_2_automation) = x;
+
+# ============================================
+# Fonts with Icon Support
+# ============================================
+font:
+  # Large font for status icons (64px)
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_icons_large
+    size: 64
+    bpp: 4
+    glyphs: " "
+    extras:
+      - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf
+        glyphs: [
+          "\U000F036C",  # mdi:microphone
+          "\U000F098F",  # mdi:sleep
+          "\U000F02A5",  # mdi:dots-horizontal
+          "\U000F0627",  # mdi:message-text
+          "\U000F0026",  # mdi:alert-circle
+          "\U000F036D",  # mdi:microphone-off
+          "\U000F0954",  # mdi:timer
+        ]
+
+  # Small font for connection status (20px)
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_icons_small
+    size: 20
+    bpp: 4
+    glyphs: " "
+    extras:
+      - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf
+        glyphs: [
+          "\U000F05A9",  # mdi:wifi
+          "\U000F07D0",  # mdi:home
+          "\U000F012C",  # mdi:check-circle
+        ]
 
 # ============================================
 # Globals
@@ -728,26 +917,18 @@ globals:
   - id: button_1_label_text
     type: std::string
     restore_value: true
-    initial_value: '"Light 1"'
-  - id: button_1_service
+    initial_value: '"Button 1"'
+  - id: button_1_automation
     type: std::string
     restore_value: true
-    initial_value: '"light.toggle"'
-  - id: button_1_entity
-    type: std::string
-    restore_value: true
-    initial_value: '"light.living_room"'
+    initial_value: '"automation.example_1"'
 
   # Button 2 Configuration
   - id: button_2_label_text
     type: std::string
     restore_value: true
-    initial_value: '"Light 2"'
-  - id: button_2_service
+    initial_value: '"Button 2"'
+  - id: button_2_automation
     type: std::string
     restore_value: true
-    initial_value: '"light.toggle"'
-  - id: button_2_entity
-    type: std::string
-    restore_value: true
-    initial_value: '"light.bedroom"'
+    initial_value: '"automation.example_2"'
