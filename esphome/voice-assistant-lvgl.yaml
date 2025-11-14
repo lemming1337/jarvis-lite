@@ -105,6 +105,7 @@ output:
   - platform: ledc
     pin: GPIO15
     id: backlight_pwm
+    inverted: true
   - platform: ledc
     pin: GPIO21
     id: buzzer_output
