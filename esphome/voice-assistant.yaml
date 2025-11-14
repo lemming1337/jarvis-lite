@@ -767,7 +767,7 @@ font:
       italic: true
     id: font_request
     size: 13
-    glyphs: " !#%'()+,-./0123456789:;<>?@ABCDEFGHIJKLMNOPQRSTUVWYZ[]_abcdefghijklmnopqrstuvwxyz{|}°"
+    glyphs: " !#%'()+,-./0123456789:;<>?@ABCDEFGHIJKLMNOPQRSTUVWYZ[]_abcdefghijklmnopqrstuvwxyzäöüÄÖÜß{|}°"
 
   - file:
       type: gfonts
@@ -775,7 +775,7 @@ font:
       weight: 300
     id: font_response
     size: 13
-    glyphs: " !#%'()+,-./0123456789:;<>?@ABCDEFGHIJKLMNOPQRSTUVWYZ[]_abcdefghijklmnopqrstuvwxyz{|}°"
+    glyphs: " !#%'()+,-./0123456789:;<>?@ABCDEFGHIJKLMNOPQRSTUVWYZ[]_abcdefghijklmnopqrstuvwxyzäöüÄÖÜß{|}°"
 
   - file:
       type: gfonts
@@ -791,7 +791,7 @@ font:
       weight: 400
     id: font_large
     size: 28
-    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöüß "
 
 # ============================================
 # Colors

@@ -180,6 +180,7 @@ lvgl:
                   align: center
                   text: !lambda "return id(button_1_label_text);"
                   text_color: 0xFFFFFF
+                  text_font: font_text_small
                   clickable: false
 
         # Action Button 2 (rechts oben)
@@ -203,6 +204,7 @@ lvgl:
                   align: center
                   text: !lambda "return id(button_2_label_text);"
                   text_color: 0xFFFFFF
+                  text_font: font_text_small
                   clickable: false
 
         # Status Label (oben Mitte-Rechts)
@@ -214,6 +216,7 @@ lvgl:
             text: "READY"
             text_align: center
             text_color: 0xFFFFFF
+            text_font: font_text_medium
 
         # Connection Status (rechts oben)
         - label:
@@ -263,6 +266,7 @@ lvgl:
                   align: center
                   text: ""
                   text_color: 0xCCCCCC
+                  text_font: font_text_small
 
         # Timer Container (über dem Status-Indikator)
         - obj:
@@ -313,6 +317,7 @@ lvgl:
               - label:
                   text: "STUMM"
                   align: center
+                  text_font: font_text_small
 
 # ============================================
 # Buzzer Configuration
@@ -897,6 +902,25 @@ font:
           "\U000F07D0",  # mdi:home
           "\U000F012C",  # mdi:check-circle
         ]
+
+  # Text fonts for German language support
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_text_medium
+    size: 16
+    bpp: 4
+    glyphs: " !\"#%&'()*+,-./:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyzäöüÄÖÜß0123456789"
+
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 300
+    id: font_text_small
+    size: 13
+    bpp: 4
+    glyphs: " !\"#%&'()*+,-./:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyzäöüÄÖÜß0123456789"
 
 # ============================================
 # Globals
