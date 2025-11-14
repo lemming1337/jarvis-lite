@@ -386,6 +386,10 @@ voice_assistant:
     - rtttl.play: "short:d=4,o=5,b=100:16e6,16e6"
     - script.execute: update_ui
 
+  on_intent_end:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
+    - script.execute: update_ui
+
   on_tts_start:
     - text_sensor.template.publish:
         id: text_response
