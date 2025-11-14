@@ -416,6 +416,8 @@ voice_assistant:
         then:
           - lambda: id(va).set_use_wake_word(false);
           - micro_wake_word.start:
+    # Keep response visible for 2 seconds before returning to idle
+    - delay: 2s
     - script.execute: set_idle_or_mute_phase
     - script.execute: update_ui
     - text_sensor.template.publish:
