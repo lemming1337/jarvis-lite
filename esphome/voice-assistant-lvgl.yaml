@@ -235,6 +235,7 @@ lvgl:
             radius: 50
             border_width: 3
             border_color: 0xFFFFFF
+            scrollbar_mode: "off"
             widgets:
               # Status Icon (zentriert im Indikator)
               - label:
@@ -306,10 +307,11 @@ lvgl:
             width: 60
             height: 35
             on_click:
+              - rtttl.play: "mario:d=4,o=5,b=100:16e6,16e6,32p,8e6,16c6,8e6,8g6,8p,8g,8p,8c6,16p,8g,16p,8e,16p,8a,8b,16a#,8a,16g.,16e6,16g6,8a6,16f6,8g6,8e6,16c6,16d6,8b,16p,8c6,16p,8g,16p,8e,16p,8a,8b,16a#,8a,16g.,16e6,16g6,8a6,16f6,8g6,8e6,16c6,16d6,8b,8p,16g6,16f#6,16f6,16d#6,16p,16e6,16p,16g#,16a,16c6,16p,16a,16c6,16d6,8p,16g6,16f#6,16f6,16d#6,16p,16e6,16p,16c7,16p,16c7,16c7,p,16g6,16f#6,16f6,16d#6,16p,16e6,16p,16g#,16a,16c6,16p,16a,16c6,16d6,8p,16d#6,8p,16d6,8p,16c6"
               - switch.toggle: mute
             widgets:
               - label:
-                  text: "MUTE"
+                  text: "STUMM"
                   align: center
 
 # ============================================
@@ -481,59 +483,59 @@ script:
           // Phase-basiertes UI Update
           switch(id(voice_assistant_phase)) {
             case ${voice_assist_listening_phase_id}:
-              lv_label_set_text(lbl_status, "LISTENING");
+              lv_label_set_text(lbl_status, "Höre");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x00FF00), 0);
               lv_label_set_text(ico_status, "\U000F036C");  // mdi:microphone
-              lv_label_set_text(lbl_request, "Listening...");
+              lv_label_set_text(lbl_request, "Höre...");
               break;
 
             case ${voice_assist_thinking_phase_id}:
-              lv_label_set_text(lbl_status, "THINKING");
+              lv_label_set_text(lbl_status, "Denke");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFFAA00), 0);
               lv_label_set_text(ico_status, "\U000F02A5");  // mdi:dots-horizontal
               lv_label_set_text(lbl_request, id(text_request).state.c_str());
               break;
 
             case ${voice_assist_replying_phase_id}:
-              lv_label_set_text(lbl_status, "REPLYING");
+              lv_label_set_text(lbl_status, "Antworte");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
               lv_label_set_text(ico_status, "\U000F0627");  // mdi:message-text
               lv_label_set_text(lbl_request, id(text_response).state.c_str());
               break;
 
             case ${voice_assist_error_phase_id}:
-              lv_label_set_text(lbl_status, "ERROR");
+              lv_label_set_text(lbl_status, "Fehler");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
               lv_label_set_text(ico_status, "\U000F0026");  // mdi:alert-circle
-              lv_label_set_text(lbl_request, "Error occurred");
+              lv_label_set_text(lbl_request, "Fehler!");
               break;
 
             case ${voice_assist_muted_phase_id}:
-              lv_label_set_text(lbl_status, "MUTED");
+              lv_label_set_text(lbl_status, "Mic aus");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x404040), 0);
               lv_label_set_text(ico_status, "\U000F036D");  // mdi:microphone-off
-              lv_label_set_text(lbl_request, "Microphone muted");
+              lv_label_set_text(lbl_request, "Mikro aus");
               break;
 
             case ${voice_assist_not_ready_phase_id}:
-              lv_label_set_text(lbl_status, "NOT READY");
+              lv_label_set_text(lbl_status, "Nicht bereit");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
               lv_label_set_text(ico_status, "\U000F0026");  // mdi:alert-circle
-              lv_label_set_text(lbl_request, "Connecting...");
+              lv_label_set_text(lbl_request, "Verbinde...");
               break;
 
             case ${voice_assist_timer_finished_phase_id}:
-              lv_label_set_text(lbl_status, "TIMER DONE");
+              lv_label_set_text(lbl_status, "Timer fertig DONE");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF00FF), 0);
               lv_label_set_text(ico_status, "\U000F0954");  // mdi:timer
-              lv_label_set_text(lbl_request, "Timer finished!");
+              lv_label_set_text(lbl_request, "Timer fertig!");
               break;
 
             default:  // IDLE
-              lv_label_set_text(lbl_status, "READY");
+              lv_label_set_text(lbl_status, "Bereit");
               lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
               lv_label_set_text(ico_status, "\U000F098F");  // mdi:sleep
-              lv_label_set_text(lbl_request, "Say 'Hey Jarvis'");
+              lv_label_set_text(lbl_request, "Sag 'Hey Jarvis'");
           }
 
           // Timer Display
