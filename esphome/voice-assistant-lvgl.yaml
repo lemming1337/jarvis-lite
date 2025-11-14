@@ -34,6 +34,7 @@ esphome:
           lv_label_set_text(lbl2, id(button_2_label_text).c_str());
           id(update_ui).execute();
       - lvgl.resume:
+      - script.execute: reset_display_timeout
 
 esp32:
   board: esp32dev
@@ -115,7 +116,7 @@ light:
     id: display_backlight
     icon: "mdi:television"
     entity_category: config
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: RESTORE_DEFAULT_ON
     default_transition_length: 250ms
 
 
@@ -137,6 +138,7 @@ touchscreen:
     on_touch:
       - lambda: |-
           ESP_LOGI("touch", "Touch at x=%d, y=%d", (int)touch.x, (int)touch.y);
+      - script.execute: reset_display_timeout
 
 # ============================================
 # LVGL Configuration
@@ -379,6 +381,7 @@ voice_assistant:
         state: "..."
     - rtttl.play: "short:d=4,o=5,b=100:16e6"
     - script.execute: update_ui
+    - script.execute: reset_display_timeout
 
   on_stt_vad_end:
     - lambda: id(voice_assistant_phase) = ${voice_assist_thinking_phase_id};
@@ -634,6 +637,21 @@ script:
           else:
             - lambda: id(voice_assistant_phase) = ${voice_assist_muted_phase_id};
 
+  - id: reset_display_timeout
+    mode: restart
+    then:
+      # Set display to full brightness with smooth transition
+      - light.turn_on:
+          id: display_backlight
+          brightness: !lambda "return id(display_brightness_config).state / 100.0;"
+          transition_length: 300ms
+      # Wait for configured timeout, then dim
+      - delay: !lambda "return id(display_timeout).state * 1000;"
+      - light.turn_on:
+          id: display_backlight
+          brightness: !lambda "return id(display_dim_brightness).state / 100.0;"
+          transition_length: 1s
+
 # ============================================
 # Switches
 # ============================================
@@ -863,6 +881,51 @@ text:
     on_value:
       - lambda: |-
           id(button_2_automation) = x;
+
+# ============================================
+# Number Components (Display Settings)
+# ============================================
+number:
+  - platform: template
+    name: "Display Brightness"
+    id: display_brightness_config
+    icon: "mdi:brightness-6"
+    entity_category: config
+    min_value: 10
+    max_value: 100
+    step: 5
+    initial_value: 100
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "%"
+    on_value:
+      - script.execute: reset_display_timeout
+
+  - platform: template
+    name: "Display Dim Brightness"
+    id: display_dim_brightness
+    icon: "mdi:brightness-5"
+    entity_category: config
+    min_value: 5
+    max_value: 50
+    step: 5
+    initial_value: 20
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "%"
+
+  - platform: template
+    name: "Display Timeout"
+    id: display_timeout
+    icon: "mdi:timer-outline"
+    entity_category: config
+    min_value: 5
+    max_value: 300
+    step: 5
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "s"
 
 # ============================================
 # Fonts with Icon Support

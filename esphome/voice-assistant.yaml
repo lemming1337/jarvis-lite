@@ -41,6 +41,7 @@ esphome:
     priority: 600
     then:
       - script.execute: draw_display
+      - script.execute: reset_display_timeout
       - delay: 30s
       - if:
           condition:
@@ -265,6 +266,7 @@ voice_assistant:
         state: "..."
     - rtttl.play: "short:d=4,o=5,b=100:16e6"
     - script.execute: draw_display
+    - script.execute: reset_display_timeout
 
   on_stt_vad_end:
     - lambda: id(voice_assistant_phase) = ${voice_assist_thinking_phase_id};
@@ -552,6 +554,21 @@ script:
           else:
             - lambda: id(voice_assistant_phase) = ${voice_assist_muted_phase_id};
 
+  - id: reset_display_timeout
+    mode: restart
+    then:
+      # Set display to full brightness with smooth transition
+      - light.turn_on:
+          id: display_backlight
+          brightness: !lambda "return id(display_brightness_config).state / 100.0;"
+          transition_length: 300ms
+      # Wait for configured timeout, then dim
+      - delay: !lambda "return id(display_timeout).state * 1000;"
+      - light.turn_on:
+          id: display_backlight
+          brightness: !lambda "return id(display_dim_brightness).state / 100.0;"
+          transition_length: 1s
+
 # ============================================
 # Switches
 # ============================================
@@ -642,6 +659,7 @@ binary_sensor:
     y_max: 310
     on_press:
       - switch.toggle: mute
+      - script.execute: reset_display_timeout
 
 # ============================================
 # Sensors
@@ -683,6 +701,51 @@ text_sensor:
           std::string truncated = esphome::str_truncate(name.c_str(), 27);
           id(text_response).state = (truncated + "...").c_str();
         }
+
+# ============================================
+# Number Components (Display Settings)
+# ============================================
+number:
+  - platform: template
+    name: "Display Brightness"
+    id: display_brightness_config
+    icon: "mdi:brightness-6"
+    entity_category: config
+    min_value: 10
+    max_value: 100
+    step: 5
+    initial_value: 100
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "%"
+    on_value:
+      - script.execute: reset_display_timeout
+
+  - platform: template
+    name: "Display Dim Brightness"
+    id: display_dim_brightness
+    icon: "mdi:brightness-5"
+    entity_category: config
+    min_value: 5
+    max_value: 50
+    step: 5
+    initial_value: 20
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "%"
+
+  - platform: template
+    name: "Display Timeout"
+    id: display_timeout
+    icon: "mdi:timer-outline"
+    entity_category: config
+    min_value: 5
+    max_value: 300
+    step: 5
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "s"
 
 # ============================================
 # Globals
