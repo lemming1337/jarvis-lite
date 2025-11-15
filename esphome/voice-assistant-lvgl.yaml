@@ -34,6 +34,7 @@ esphome:
           lv_label_set_text(lbl2, id(button_2_label_text).c_str());
           id(update_ui).execute();
       - lvgl.resume:
+      - script.execute: reset_display_timeout
 
 esp32:
   board: esp32dev
@@ -104,6 +105,7 @@ output:
   - platform: ledc
     pin: GPIO15
     id: backlight_pwm
+    inverted: true
   - platform: ledc
     pin: GPIO21
     id: buzzer_output
@@ -115,7 +117,7 @@ light:
     id: display_backlight
     icon: "mdi:television"
     entity_category: config
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: RESTORE_DEFAULT_ON
     default_transition_length: 250ms
 
 
@@ -137,6 +139,7 @@ touchscreen:
     on_touch:
       - lambda: |-
           ESP_LOGI("touch", "Touch at x=%d, y=%d", (int)touch.x, (int)touch.y);
+      - script.execute: reset_display_timeout
 
 # ============================================
 # LVGL Configuration
@@ -180,6 +183,7 @@ lvgl:
                   align: center
                   text: !lambda "return id(button_1_label_text);"
                   text_color: 0xFFFFFF
+                  text_font: font_text_small
                   clickable: false
 
         # Action Button 2 (rechts oben)
@@ -203,6 +207,7 @@ lvgl:
                   align: center
                   text: !lambda "return id(button_2_label_text);"
                   text_color: 0xFFFFFF
+                  text_font: font_text_small
                   clickable: false
 
         # Status Label (oben Mitte-Rechts)
@@ -214,6 +219,7 @@ lvgl:
             text: "READY"
             text_align: center
             text_color: 0xFFFFFF
+            text_font: font_text_medium
 
         # Connection Status (rechts oben)
         - label:
@@ -263,6 +269,7 @@ lvgl:
                   align: center
                   text: ""
                   text_color: 0xCCCCCC
+                  text_font: font_text_small
 
         # Timer Container (über dem Status-Indikator)
         - obj:
@@ -313,6 +320,7 @@ lvgl:
               - label:
                   text: "STUMM"
                   align: center
+                  text_font: font_text_small
 
 # ============================================
 # Buzzer Configuration
@@ -374,6 +382,7 @@ voice_assistant:
         state: "..."
     - rtttl.play: "short:d=4,o=5,b=100:16e6"
     - script.execute: update_ui
+    - script.execute: reset_display_timeout
 
   on_stt_vad_end:
     - lambda: id(voice_assistant_phase) = ${voice_assist_thinking_phase_id};
@@ -384,6 +393,13 @@ voice_assistant:
         id: text_request
         state: !lambda "return x;"
     - rtttl.play: "short:d=4,o=5,b=100:16e6,16e6"
+    - script.execute: update_ui
+
+  on_intent_end:
+    - text_sensor.template.publish:
+        id: text_response
+        state: "Erledigt!"
+    - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
     - script.execute: update_ui
 
   on_tts_start:
@@ -400,6 +416,8 @@ voice_assistant:
         then:
           - lambda: id(va).set_use_wake_word(false);
           - micro_wake_word.start:
+    # Keep response visible for 5 seconds before returning to idle
+    - delay: 5s
     - script.execute: set_idle_or_mute_phase
     - script.execute: update_ui
     - text_sensor.template.publish:
@@ -621,6 +639,21 @@ script:
             - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
           else:
             - lambda: id(voice_assistant_phase) = ${voice_assist_muted_phase_id};
+
+  - id: reset_display_timeout
+    mode: restart
+    then:
+      # Set display to full brightness with smooth transition
+      - light.turn_on:
+          id: display_backlight
+          brightness: !lambda "return id(display_brightness_config).state / 100.0;"
+          transition_length: 300ms
+      # Wait for configured timeout, then dim
+      - delay: !lambda "return id(display_timeout).state * 1000;"
+      - light.turn_on:
+          id: display_backlight
+          brightness: !lambda "return id(display_dim_brightness).state / 100.0;"
+          transition_length: 1s
 
 # ============================================
 # Switches
@@ -853,6 +886,76 @@ text:
           id(button_2_automation) = x;
 
 # ============================================
+# Number Components (Display Settings)
+# ============================================
+number:
+  - platform: template
+    name: "Display Brightness"
+    id: display_brightness_config
+    icon: "mdi:brightness-6"
+    entity_category: config
+    min_value: 10
+    max_value: 100
+    step: 5
+    initial_value: 100
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "%"
+    on_value:
+      - script.execute: reset_display_timeout
+
+  - platform: template
+    name: "Display Dim Brightness"
+    id: display_dim_brightness
+    icon: "mdi:brightness-5"
+    entity_category: config
+    min_value: 5
+    max_value: 50
+    step: 5
+    initial_value: 20
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "%"
+
+  - platform: template
+    name: "Display Timeout"
+    id: display_timeout
+    icon: "mdi:timer-outline"
+    entity_category: config
+    min_value: 5
+    max_value: 300
+    step: 5
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "s"
+
+  - platform: template
+    name: "Microphone Gain"
+    id: microphone_gain_config
+    icon: "mdi:microphone"
+    entity_category: config
+    min_value: 0
+    max_value: 31
+    step: 1
+    initial_value: 31
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "dBFS"
+
+  - platform: template
+    name: "Wake Word Threshold"
+    id: wake_word_threshold_config
+    icon: "mdi:ear-hearing"
+    entity_category: config
+    min_value: 0.5
+    max_value: 0.99
+    step: 0.01
+    initial_value: 0.90
+    optimistic: true
+    restore_value: true
+
+# ============================================
 # Fonts with Icon Support
 # ============================================
 font:
@@ -893,6 +996,25 @@ font:
           "\U000F07D0",  # mdi:home
           "\U000F012C",  # mdi:check-circle
         ]
+
+  # Text fonts for German language support
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_text_medium
+    size: 16
+    bpp: 4
+    glyphs: " !\"#%&'()*+,-./:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyzäöüÄÖÜß0123456789"
+
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 300
+    id: font_text_small
+    size: 13
+    bpp: 4
+    glyphs: " !\"#%&'()*+,-./:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyzäöüÄÖÜß0123456789"
 
 # ============================================
 # Globals
