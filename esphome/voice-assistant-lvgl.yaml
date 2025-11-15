@@ -417,6 +417,8 @@ voice_assistant:
     - script.execute: update_ui
 
   on_end:
+    - delay: 1s
+    # Restart only mWW if enabled; streaming wake words automatically restart
     - if:
         condition:
           - lambda: return id(wake_word_engine_location).state == "On device";
