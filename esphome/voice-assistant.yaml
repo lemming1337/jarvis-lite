@@ -147,37 +147,20 @@ display:
           it.rectangle(10, 250, 220, 60, Color::BLACK);
           it.printf(15, 25, id(font_request), Color::BLACK, "%s", id(text_request).state.c_str());
 
-          // Multi-line text wrapping for response
+          // Multi-line text display (text already has \n line breaks)
           std::string response_text = id(text_response).state.c_str();
-          int max_width = 200;  // Max character width in pixels
-          int char_width = 7;   // Approximate character width
-          int max_chars_per_line = max_width / char_width;
           int y_pos = 255;
           int line_height = 15;
-          int max_lines = 3;
+          int max_lines = 4;
           int line_count = 0;
 
-          std::string current_line = "";
-          std::istringstream words(response_text);
-          std::string word;
+          std::istringstream stream(response_text);
+          std::string line;
 
-          while (words >> word && line_count < max_lines) {
-            std::string test_line = current_line.empty() ? word : current_line + " " + word;
-            if (test_line.length() <= max_chars_per_line) {
-              current_line = test_line;
-            } else {
-              if (!current_line.empty()) {
-                it.printf(15, y_pos, id(font_response), Color::BLACK, "%s", current_line.c_str());
-                y_pos += line_height;
-                line_count++;
-              }
-              current_line = word;
-            }
-          }
-
-          // Print remaining text
-          if (!current_line.empty() && line_count < max_lines) {
-            it.printf(15, y_pos, id(font_response), Color::BLACK, "%s", current_line.c_str());
+          while (std::getline(stream, line, '\n') && line_count < max_lines) {
+            it.printf(15, y_pos, id(font_response), Color::BLACK, "%s", line.c_str());
+            y_pos += line_height;
+            line_count++;
           }
 
           id(draw_timer_timeline).execute();
@@ -732,6 +715,50 @@ text_sensor:
 
   - id: text_response
     platform: template
+    on_value:
+      lambda: |-
+        // Automatischer Zeilenumbruch für Display
+        // Box Breite: 200px nutzbar, Font: 13px, ca. 28 Zeichen pro Zeile
+        std::string text = id(text_response).state.c_str();
+        std::string result = "";
+        int max_chars_per_line = 28;
+        int current_line_length = 0;
+        std::string current_word = "";
+
+        for (size_t i = 0; i < text.length(); i++) {
+          char c = text[i];
+
+          if (c == ' ' || c == '\n' || i == text.length() - 1) {
+            // Wort zu Ende
+            if (i == text.length() - 1 && c != ' ' && c != '\n') {
+              current_word += c;
+            }
+
+            // Prüfen ob Wort in aktuelle Zeile passt
+            if (current_line_length + current_word.length() + (current_line_length > 0 ? 1 : 0) > max_chars_per_line) {
+              // Neue Zeile beginnen
+              if (current_line_length > 0) {
+                result += "\n";
+              }
+              result += current_word;
+              current_line_length = current_word.length();
+            } else {
+              // Wort in aktuelle Zeile einfügen
+              if (current_line_length > 0 && current_word.length() > 0) {
+                result += " ";
+                current_line_length++;
+              }
+              result += current_word;
+              current_line_length += current_word.length();
+            }
+
+            current_word = "";
+          } else {
+            current_word += c;
+          }
+        }
+
+        id(text_response).state = result.c_str();
 
 # ============================================
 # Number Components (Display Settings)
