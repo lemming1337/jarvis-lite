@@ -37,6 +37,8 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   min_version: 2024.11.0
+  includes:
+    - sstream
   on_boot:
     priority: 600
     then:
@@ -140,11 +142,44 @@ display:
           // Request text box
           it.filled_rectangle(10, 20, 220, 30, Color::WHITE);
           it.rectangle(10, 20, 220, 30, Color::BLACK);
-          // Response text box
-          it.filled_rectangle(10, 270, 220, 30, Color::WHITE);
-          it.rectangle(10, 270, 220, 30, Color::BLACK);
+          // Response text box - mehrzeilig
+          it.filled_rectangle(10, 250, 220, 60, Color::WHITE);
+          it.rectangle(10, 250, 220, 60, Color::BLACK);
           it.printf(15, 25, id(font_request), Color::BLACK, "%s", id(text_request).state.c_str());
-          it.printf(15, 275, id(font_response), Color::BLACK, "%s", id(text_response).state.c_str());
+
+          // Multi-line text wrapping for response
+          std::string response_text = id(text_response).state.c_str();
+          int max_width = 200;  // Max character width in pixels
+          int char_width = 7;   // Approximate character width
+          int max_chars_per_line = max_width / char_width;
+          int y_pos = 255;
+          int line_height = 15;
+          int max_lines = 3;
+          int line_count = 0;
+
+          std::string current_line = "";
+          std::istringstream words(response_text);
+          std::string word;
+
+          while (words >> word && line_count < max_lines) {
+            std::string test_line = current_line.empty() ? word : current_line + " " + word;
+            if (test_line.length() <= max_chars_per_line) {
+              current_line = test_line;
+            } else {
+              if (!current_line.empty()) {
+                it.printf(15, y_pos, id(font_response), Color::BLACK, "%s", current_line.c_str());
+                y_pos += line_height;
+                line_count++;
+              }
+              current_line = word;
+            }
+          }
+
+          // Print remaining text
+          if (!current_line.empty() && line_count < max_lines) {
+            it.printf(15, y_pos, id(font_response), Color::BLACK, "%s", current_line.c_str());
+          }
+
           id(draw_timer_timeline).execute();
       - id: timer_finished_page
         lambda: |-
@@ -697,13 +732,6 @@ text_sensor:
 
   - id: text_response
     platform: template
-    on_value:
-      lambda: |-
-        if(id(text_response).state.length() > 28) {
-          std::string name = id(text_response).state.c_str();
-          std::string truncated = esphome::str_truncate(name.c_str(), 27);
-          id(text_response).state = (truncated + "...").c_str();
-        }
 
 # ============================================
 # Number Components (Display Settings)
