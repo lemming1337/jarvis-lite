@@ -266,10 +266,17 @@ lvgl:
               # Request/Response Label
               - label:
                   id: request_label
-                  align: center
+                  align: TOP_LEFT
+                  x: 8
+                  y: 8
+                  width: 169
+                  height: 114
                   text: ""
                   text_color: 0xCCCCCC
                   text_font: font_text_small
+                  long_mode: SCROLL_CIRCULAR
+                  text_align: LEFT
+                  recolor: true
 
         # Timer Container (über dem Status-Indikator)
         - obj:
@@ -410,6 +417,8 @@ voice_assistant:
     - script.execute: update_ui
 
   on_end:
+    - delay: 1s
+    # Restart only mWW if enabled; streaming wake words automatically restart
     - if:
         condition:
           - lambda: return id(wake_word_engine_location).state == "On device";
@@ -786,11 +795,48 @@ text_sensor:
     platform: template
     on_value:
       lambda: |-
-        if(id(text_response).state.length() > 28) {
-          std::string name = id(text_response).state.c_str();
-          std::string truncated = esphome::str_truncate(name.c_str(), 27);
-          id(text_response).state = (truncated + "...").c_str();
+        // Automatischer Zeilenumbruch für LVGL Label
+        // Label Breite: 169px, Font: 13px, ca. 23 Zeichen pro Zeile
+        std::string text = id(text_response).state.c_str();
+        std::string result = "";
+        int max_chars_per_line = 23;
+        int current_line_length = 0;
+        std::string current_word = "";
+
+        for (size_t i = 0; i < text.length(); i++) {
+          char c = text[i];
+
+          if (c == ' ' || c == '\n' || i == text.length() - 1) {
+            // Wort zu Ende
+            if (i == text.length() - 1 && c != ' ' && c != '\n') {
+              current_word += c;
+            }
+
+            // Prüfen ob Wort in aktuelle Zeile passt
+            if (current_line_length + current_word.length() + (current_line_length > 0 ? 1 : 0) > max_chars_per_line) {
+              // Neue Zeile beginnen
+              if (current_line_length > 0) {
+                result += "\n";
+              }
+              result += current_word;
+              current_line_length = current_word.length();
+            } else {
+              // Wort in aktuelle Zeile einfügen
+              if (current_line_length > 0 && current_word.length() > 0) {
+                result += " ";
+                current_line_length++;
+              }
+              result += current_word;
+              current_line_length += current_word.length();
+            }
+
+            current_word = "";
+          } else {
+            current_word += c;
+          }
         }
+
+        id(text_response).state = result.c_str();
 
   # Button configuration status (read-only, shows current values)
   - platform: template

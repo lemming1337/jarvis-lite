@@ -37,6 +37,8 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   min_version: 2024.11.0
+  includes:
+    - sstream
   on_boot:
     priority: 600
     then:
@@ -140,11 +142,27 @@ display:
           // Request text box
           it.filled_rectangle(10, 20, 220, 30, Color::WHITE);
           it.rectangle(10, 20, 220, 30, Color::BLACK);
-          // Response text box
-          it.filled_rectangle(10, 270, 220, 30, Color::WHITE);
-          it.rectangle(10, 270, 220, 30, Color::BLACK);
+          // Response text box - mehrzeilig
+          it.filled_rectangle(10, 250, 220, 60, Color::WHITE);
+          it.rectangle(10, 250, 220, 60, Color::BLACK);
           it.printf(15, 25, id(font_request), Color::BLACK, "%s", id(text_request).state.c_str());
-          it.printf(15, 275, id(font_response), Color::BLACK, "%s", id(text_response).state.c_str());
+
+          // Multi-line text display (text already has \n line breaks)
+          std::string response_text = id(text_response).state.c_str();
+          int y_pos = 255;
+          int line_height = 15;
+          int max_lines = 4;
+          int line_count = 0;
+
+          std::istringstream stream(response_text);
+          std::string line;
+
+          while (std::getline(stream, line, '\n') && line_count < max_lines) {
+            it.printf(15, y_pos, id(font_response), Color::BLACK, "%s", line.c_str());
+            y_pos += line_height;
+            line_count++;
+          }
+
           id(draw_timer_timeline).execute();
       - id: timer_finished_page
         lambda: |-
@@ -699,11 +717,48 @@ text_sensor:
     platform: template
     on_value:
       lambda: |-
-        if(id(text_response).state.length() > 28) {
-          std::string name = id(text_response).state.c_str();
-          std::string truncated = esphome::str_truncate(name.c_str(), 27);
-          id(text_response).state = (truncated + "...").c_str();
+        // Automatischer Zeilenumbruch für Display
+        // Box Breite: 200px nutzbar, Font: 13px, ca. 28 Zeichen pro Zeile
+        std::string text = id(text_response).state.c_str();
+        std::string result = "";
+        int max_chars_per_line = 28;
+        int current_line_length = 0;
+        std::string current_word = "";
+
+        for (size_t i = 0; i < text.length(); i++) {
+          char c = text[i];
+
+          if (c == ' ' || c == '\n' || i == text.length() - 1) {
+            // Wort zu Ende
+            if (i == text.length() - 1 && c != ' ' && c != '\n') {
+              current_word += c;
+            }
+
+            // Prüfen ob Wort in aktuelle Zeile passt
+            if (current_line_length + current_word.length() + (current_line_length > 0 ? 1 : 0) > max_chars_per_line) {
+              // Neue Zeile beginnen
+              if (current_line_length > 0) {
+                result += "\n";
+              }
+              result += current_word;
+              current_line_length = current_word.length();
+            } else {
+              // Wort in aktuelle Zeile einfügen
+              if (current_line_length > 0 && current_word.length() > 0) {
+                result += " ";
+                current_line_length++;
+              }
+              result += current_word;
+              current_line_length += current_word.length();
+            }
+
+            current_word = "";
+          } else {
+            current_word += c;
+          }
         }
+
+        id(text_response).state = result.c_str();
 
 # ============================================
 # Number Components (Display Settings)
