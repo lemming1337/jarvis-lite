@@ -27,11 +27,18 @@ esphome:
       - delay: 2s
       - lambda: |-
           id(init_in_progress) = false;
-          // Initialize button labels
+          // Initialize button labels from restored globals
           auto lbl1 = id(action_button_1_label);
           lv_label_set_text(lbl1, id(button_1_label_text).c_str());
           auto lbl2 = id(action_button_2_label);
           lv_label_set_text(lbl2, id(button_2_label_text).c_str());
+
+          // Sync text input components with restored global values
+          id(button_1_label_input).publish_state(id(button_1_label_text));
+          id(button_1_automation_input).publish_state(id(button_1_automation));
+          id(button_2_label_input).publish_state(id(button_2_label_text));
+          id(button_2_automation_input).publish_state(id(button_2_automation));
+
           id(update_ui).execute();
       - lvgl.resume:
       - script.execute: reset_display_timeout
@@ -880,7 +887,6 @@ text:
     max_length: 20
     mode: text
     entity_category: config
-    initial_value: "Button 1"
     on_value:
       - lambda: |-
           id(button_1_label_text) = x;
@@ -896,7 +902,6 @@ text:
     max_length: 50
     mode: text
     entity_category: config
-    initial_value: "automation.example_1"
     on_value:
       - lambda: |-
           id(button_1_automation) = x;
@@ -910,7 +915,6 @@ text:
     max_length: 20
     mode: text
     entity_category: config
-    initial_value: "Button 2"
     on_value:
       - lambda: |-
           id(button_2_label_text) = x;
@@ -926,7 +930,6 @@ text:
     max_length: 50
     mode: text
     entity_category: config
-    initial_value: "automation.example_2"
     on_value:
       - lambda: |-
           id(button_2_automation) = x;
