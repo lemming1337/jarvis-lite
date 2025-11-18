@@ -18,20 +18,36 @@ Ein Voice Assistant für Home Assistant mit **On-Device Wake Word Detection** ba
 
 ## 🎨 UI-Varianten
 
-Dieses Projekt bietet **zwei verschiedene UI-Implementierungen**:
+Dieses Projekt bietet **mehrere Implementierungen** für verschiedene Hardware:
+
+### Standard ESP32 Varianten
 
 1. **Standard-Variante** (`voice-assistant.yaml`)
    - Verwendet ILI9xxx Display Pages mit PNG-Bildern
    - Bewährte Casita-Illustrationen
    - Einfach zu verstehen und anzupassen
+   - 4MB Flash
 
-2. **LVGL-Variante** (`voice-assistant-lvgl.yaml`) ⭐ **NEU**
+2. **LVGL-Variante** (`voice-assistant-lvgl.yaml`) ⭐ **EMPFOHLEN**
    - Modernes Widget-basiertes UI ohne große Bilddateien
    - ~500KB weniger Flash-Speicher benötigt
    - Flüssigere Animationen und bessere Performance
+   - 4MB Flash
    - **📖 [Zur LVGL-Dokumentation](docs/lvgl-variant.md)**
 
-Beide Varianten unterstützen alle Features (Wake Word, Timer, Mute, etc.).
+### ESP32-S3 Variante
+
+3. **S3 LVGL-Variante** (`voice-assistant-lvgl-s3.yaml`) 🚀 **BEAST MODE**
+   - Optimiert für **Unexpected Maker ProS3** (ESP32-S3)
+   - **16MB Flash** + **8MB PSRAM @ 120MHz**
+   - **100% LVGL Buffer @ 60fps** - Gaming-Grade Performance!
+   - **80MHz Display SPI** - 4x schneller als ESP32
+   - **60Hz Touch Polling** - Zero Lag
+   - **WiFi Performance Mode** - Maximum Durchsatz
+   - Native USB-C Unterstützung
+   - **📖 [Zur S3-Dokumentation](docs/esp32-s3-variant.md)**
+
+Alle Varianten unterstützen die gleichen Features (Wake Word, Timer, Mute, etc.).
 
 ## 📋 Inhaltsverzeichnis
 
@@ -301,6 +317,7 @@ Das Display zeigt verschiedene Ansichten je nach Status (alle im 240x320 Portrai
 ## 📚 Weitere Ressourcen
 
 ### Projekt-Dokumentation
+- **[ESP32-S3 ProS3 Variante](docs/esp32-s3-variant.md)** 🚀 - Optimiert für 16MB Flash + 8MB PSRAM
 - **[LVGL-Variante](docs/lvgl-variant.md)** ⭐ - Modernes Widget-basiertes UI
 - **[Flash-Optimierung](docs/flash-optimization.md)** - Custom Partitions & No-OTA Setup ⚡
 - **[Wake Word Setup Guide](docs/wake-word-setup.md)** - Detaillierte Wake Word Dokumentation

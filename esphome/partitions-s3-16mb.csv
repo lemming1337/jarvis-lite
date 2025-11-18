@@ -1,0 +1,9 @@
+# Name,   Type, SubType,  Offset,   Size,     Flags
+# ESP32-S3 Custom Partition Table - ProS3 16MB Flash + 8MB PSRAM
+# Optimized for larger application with room for future expansion
+# Single Factory App (No OTA) - USB-C flashing only
+
+nvs,      data, nvs,      0x9000,   0x6000,     # NVS storage (24KB)
+phy_init, data, phy,      0xf000,   0x1000,     # PHY init data (4KB)
+factory,  app,  factory,  0x10000,  0x600000,   # App partition (6MB)
+spiffs,   data, spiffs,   0x610000, 0x9F0000,   # SPIFFS storage (9.94MB)
