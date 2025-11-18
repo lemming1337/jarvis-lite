@@ -37,13 +37,14 @@ Dieses Projekt bietet **mehrere Implementierungen** für verschiedene Hardware:
 
 ### ESP32-S3 Variante
 
-3. **S3 LVGL-Variante** (`voice-assistant-lvgl-s3.yaml`) 🚀 **NEU**
+3. **S3 LVGL-Variante** (`voice-assistant-lvgl-s3.yaml`) 🚀 **BEAST MODE**
    - Optimiert für **Unexpected Maker ProS3** (ESP32-S3)
-   - 16MB Flash + 8MB PSRAM
-   - **100% LVGL Buffer** - Null Screen-Tearing! (4x größer als Standard)
-   - 2x schnellere Display-Kommunikation (40MHz statt 20MHz)
+   - **16MB Flash** + **8MB PSRAM @ 120MHz**
+   - **100% LVGL Buffer @ 60fps** - Gaming-Grade Performance!
+   - **80MHz Display SPI** - 4x schneller als ESP32
+   - **60Hz Touch Polling** - Zero Lag
+   - **WiFi Performance Mode** - Maximum Durchsatz
    - Native USB-C Unterstützung
-   - Platz für zukünftige Erweiterungen
    - **📖 [Zur S3-Dokumentation](docs/esp32-s3-variant.md)**
 
 Alle Varianten unterstützen die gleichen Features (Wake Word, Timer, Mute, etc.).

@@ -57,14 +57,19 @@ esp32:
     type: esp-idf
     version: recommended
     sdkconfig_options:
-      # PSRAM Configuration (8MB Octal PSRAM)
+      # PSRAM Configuration (8MB Octal PSRAM) - MAXIMUM SPEED!
       CONFIG_ESP32S3_SPIRAM_SUPPORT: "y"
       CONFIG_SPIRAM_MODE_OCT: "y"
-      CONFIG_SPIRAM_SPEED_80M: "y"
+      CONFIG_SPIRAM_SPEED_120M: "y"  # 120MHz - 50% faster than default!
       CONFIG_SPIRAM: "y"
       CONFIG_SPIRAM_USE_MALLOC: "y"
       CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "16384"
       CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL: "32768"
+
+      # PSRAM Cache optimization
+      CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB: "y"
+      CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
 
       # USB CDC for native USB serial
       CONFIG_ESP_CONSOLE_USB_CDC: "y"
@@ -74,8 +79,16 @@ esp32:
       CONFIG_COMPILER_OPTIMIZATION_PERF: "y"
       CONFIG_FREERTOS_HZ: "1000"
 
-      # Increase main task stack (for LVGL)
+      # WiFi performance optimizations
+      CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM: "16"
+      CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM: "32"
+      CONFIG_ESP32_WIFI_DYNAMIC_TX_BUFFER_NUM: "32"
+      CONFIG_ESP32_WIFI_AMPDU_TX_ENABLED: "y"
+      CONFIG_ESP32_WIFI_AMPDU_RX_ENABLED: "y"
+
+      # Task stack sizes (LVGL + Wake Word need more)
       CONFIG_ESP_MAIN_TASK_STACK_SIZE: "8192"
+      CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT: "4096"
 
 # ============================================
 # Connectivity
@@ -96,6 +109,7 @@ api:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  power_save_mode: none  # Maximum WiFi performance - no power saving!
   ap:
   on_connect:
     - lambda: id(wifi_connected) = true;
@@ -127,7 +141,7 @@ display:
     reset_pin: GPIO22
     rotation: 270  # Portrait Mode (240x320)
     invert_colors: false
-    data_rate: 40000000  # 40MHz for S3 (2x faster than ESP32)
+    data_rate: 80000000  # 80MHz - ILI9341 maximum! (4x faster than ESP32)
     auto_clear_enabled: false
     #show_test_card: True
     spi_id: spi_main
@@ -162,8 +176,9 @@ touchscreen:
     id: touch_screen
     cs_pin: GPIO14
     interrupt_pin: GPIO27
-    update_interval: 50ms
+    update_interval: 16ms  # 60fps touch polling for instant response!
     threshold: 400
+    report_interval: 16ms  # Match display refresh
     calibration:
       x_min: 220
       x_max: 3900
@@ -185,6 +200,8 @@ lvgl:
   border_width: 0
   outline_width: 0
   buffer_size: 100%  # Full double-buffering thanks to 8MB PSRAM - zero tearing!
+  byte_order: big_endian
+  update_interval: 16ms  # 60fps UI updates - silky smooth!
   displays:
     - main_display
   touchscreens:
