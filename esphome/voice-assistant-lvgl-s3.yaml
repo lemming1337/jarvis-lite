@@ -1,0 +1,1134 @@
+# ESPHome Configuration for Voice Assistant with LVGL - ESP32-S3 ProS3 Optimized
+# Hardware: Unexpected Maker ProS3 (ESP32-S3-MINI-1-N16R8) + Display Module + INMP441
+# Features: 16MB Flash + 8MB PSRAM + Native USB-C
+# UI: Optimized LVGL interface with enhanced buffering
+
+substitutions:
+  name: "jarvis-lite-s3"
+  friendly_name: "Jarvis Voice Assistant S3"
+
+  # Voice assistant phases
+  voice_assist_idle_phase_id: "1"
+  voice_assist_listening_phase_id: "2"
+  voice_assist_thinking_phase_id: "3"
+  voice_assist_replying_phase_id: "4"
+  voice_assist_not_ready_phase_id: "10"
+  voice_assist_error_phase_id: "11"
+  voice_assist_muted_phase_id: "12"
+  voice_assist_timer_finished_phase_id: "20"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2024.11.0
+  platformio_options:
+    board_build.flash_mode: dio
+    board_build.f_flash: 80000000L
+    board_build.f_cpu: 240000000L
+  on_boot:
+    priority: 600
+    then:
+      - lvgl.pause:
+      - delay: 2s
+      - lambda: |-
+          id(init_in_progress) = false;
+          // Initialize button labels from restored globals
+          auto lbl1 = id(action_button_1_label);
+          lv_label_set_text(lbl1, id(button_1_label_text).c_str());
+          auto lbl2 = id(action_button_2_label);
+          lv_label_set_text(lbl2, id(button_2_label_text).c_str());
+
+          // Sync text input components with restored global values
+          id(button_1_label_input).publish_state(id(button_1_label_text));
+          id(button_1_automation_input).publish_state(id(button_1_automation));
+          id(button_2_label_input).publish_state(id(button_2_label_text));
+          id(button_2_automation_input).publish_state(id(button_2_automation));
+
+          id(update_ui).execute();
+      - lvgl.resume:
+      - script.execute: reset_display_timeout
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  partitions: partitions-s3-16mb.csv
+  framework:
+    type: esp-idf
+    version: recommended
+    sdkconfig_options:
+      # PSRAM Configuration (8MB Octal PSRAM)
+      CONFIG_ESP32S3_SPIRAM_SUPPORT: "y"
+      CONFIG_SPIRAM_MODE_OCT: "y"
+      CONFIG_SPIRAM_SPEED_80M: "y"
+      CONFIG_SPIRAM: "y"
+      CONFIG_SPIRAM_USE_MALLOC: "y"
+      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "16384"
+      CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL: "32768"
+
+      # USB CDC for native USB serial
+      CONFIG_ESP_CONSOLE_USB_CDC: "y"
+      CONFIG_ESP_CONSOLE_SECONDARY_NONE: "y"
+
+      # Optimize for performance
+      CONFIG_COMPILER_OPTIMIZATION_PERF: "y"
+      CONFIG_FREERTOS_HZ: "1000"
+
+      # Increase main task stack (for LVGL)
+      CONFIG_ESP_MAIN_TASK_STACK_SIZE: "8192"
+
+# ============================================
+# Connectivity
+# ============================================
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: BXjDr4Xk6mqmJF7HSILBMqJFDfFCnfkRAhHZNx+tqj0=
+  on_client_connected:
+    - lambda: id(api_connected) = true;
+    - script.execute: update_ui
+  on_client_disconnected:
+    - lambda: id(api_connected) = false;
+    - script.execute: update_ui
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+  on_connect:
+    - lambda: id(wifi_connected) = true;
+    - script.execute: update_ui
+  on_disconnect:
+    - lambda: id(wifi_connected) = false;
+    - script.execute: update_ui
+
+captive_portal:
+
+# ============================================
+# SPI Bus (Display & Touch)
+# ============================================
+spi:
+  - id: spi_main
+    clk_pin: GPIO18
+    mosi_pin: GPIO23
+    miso_pin: GPIO19
+
+# ============================================
+# Display Configuration (ILI9341 - 240x320)
+# ============================================
+display:
+  - platform: ili9xxx
+    id: main_display
+    model: TFT 2.4
+    cs_pin: GPIO5
+    dc_pin: GPIO4
+    reset_pin: GPIO22
+    rotation: 270  # Portrait Mode (240x320)
+    invert_colors: false
+    data_rate: 40000000  # 40MHz for S3 (2x faster than ESP32)
+    auto_clear_enabled: false
+    #show_test_card: True
+    spi_id: spi_main
+
+
+# Display Backlight (PWM)
+output:
+  - platform: ledc
+    pin: GPIO15
+    id: backlight_pwm
+    inverted: true
+  - platform: ledc
+    pin: GPIO21
+    id: buzzer_output
+
+light:
+  - platform: monochromatic
+    output: backlight_pwm
+    name: "Screen"
+    id: display_backlight
+    icon: "mdi:television"
+    entity_category: config
+    restore_mode: RESTORE_DEFAULT_ON
+    default_transition_length: 250ms
+
+
+# ============================================
+# Touchscreen (XPT2046)
+# ============================================
+touchscreen:
+  - platform: xpt2046
+    id: touch_screen
+    cs_pin: GPIO14
+    interrupt_pin: GPIO27
+    update_interval: 50ms
+    threshold: 400
+    calibration:
+      x_min: 220
+      x_max: 3900
+      y_min: 200
+      y_max: 3850
+    on_touch:
+      - lambda: |-
+          ESP_LOGI("touch", "Touch at x=%d, y=%d", (int)touch.x, (int)touch.y);
+      - script.execute: reset_display_timeout
+
+# ============================================
+# LVGL Configuration - Optimized for PSRAM
+# ============================================
+lvgl:
+  log_level: INFO
+  color_depth: 16
+  bg_color: 0x000000
+  text_color: 0xFFFFFF
+  border_width: 0
+  outline_width: 0
+  buffer_size: 50%  # Increased from 25% to 50% thanks to PSRAM
+  displays:
+    - main_display
+  touchscreens:
+    - touch_screen
+
+  # UI Pages
+  pages:
+    - id: main_page
+      scrollbar_mode: "off"  # Disable scrollbar
+      widgets:
+        # Action Button 1 (links oben)
+        - button:
+            id: action_button_1
+            x: 5
+            y: 5
+            width: 70
+            height: 35
+            bg_color: 0x2196F3
+            on_click:
+              - logger.log: "Button 1 clicked"
+              - rtttl.play: "button:d=4,o=5,b=100:16e6"
+              - homeassistant.action:
+                  action: automation.trigger
+                  data:
+                    entity_id: !lambda "return id(button_1_automation);"
+            widgets:
+              - label:
+                  id: action_button_1_label
+                  align: center
+                  text: !lambda "return id(button_1_label_text);"
+                  text_color: 0xFFFFFF
+                  text_font: font_text_small
+                  clickable: false
+
+        # Action Button 2 (rechts oben)
+        - button:
+            id: action_button_2
+            x: 85
+            y: 5
+            width: 70
+            height: 35
+            bg_color: 0x4CAF50
+            on_click:
+              - logger.log: "Button 2 clicked"
+              - rtttl.play: "button:d=4,o=5,b=100:16e6"
+              - homeassistant.action:
+                  action: automation.trigger
+                  data:
+                    entity_id: !lambda "return id(button_2_automation);"
+            widgets:
+              - label:
+                  id: action_button_2_label
+                  align: center
+                  text: !lambda "return id(button_2_label_text);"
+                  text_color: 0xFFFFFF
+                  text_font: font_text_small
+                  clickable: false
+
+        # Status Label (oben Mitte-Rechts)
+        - label:
+            id: status_label
+            x: 180
+            y: 15
+            width: 100
+            text: "READY"
+            text_align: center
+            text_color: 0xFFFFFF
+            text_font: font_text_medium
+
+        # Connection Status (rechts oben)
+        - label:
+            id: connection_label
+            x: 285
+            y: 15
+            text: "\U000F012C"  # mdi:check-circle
+            text_color: 0x00FF00
+            text_font: font_icons_small
+
+        # Icon/Status-Indikator (Kreis links, vertikal zentriert)
+        - obj:
+            id: status_indicator
+            x: 20
+            y: 70
+            width: 100
+            height: 100
+            bg_color: 0x0080FF
+            radius: 50
+            border_width: 3
+            border_color: 0xFFFFFF
+            scrollbar_mode: "off"
+            widgets:
+              # Status Icon (zentriert im Indikator)
+              - label:
+                  id: status_icon
+                  align: center
+                  text: "\U000F098F"  # mdi:sleep
+                  text_color: 0xFFFFFF
+                  text_font: font_icons_large
+
+        # Request/Response Text Box (rechts neben dem Indikator)
+        - obj:
+            id: text_container
+            x: 130
+            y: 55
+            width: 185
+            height: 130
+            bg_color: 0x1e1e1e
+            radius: 5
+            border_width: 1
+            border_color: 0x404040
+            widgets:
+              # Request/Response Label
+              - label:
+                  id: request_label
+                  align: TOP_LEFT
+                  x: 8
+                  y: 8
+                  width: 169
+                  height: 114
+                  text: ""
+                  text_color: 0xCCCCCC
+                  text_font: font_text_small
+                  long_mode: SCROLL_CIRCULAR
+                  text_align: LEFT
+                  recolor: true
+
+        # Timer Container (über dem Status-Indikator)
+        - obj:
+            id: timer_container
+            x: 10
+            y: 180
+            width: 120
+            height: 35
+            bg_color: 0x1e1e1e
+            radius: 5
+            border_width: 2
+            border_color: 0x00FF00
+            hidden: true
+            widgets:
+              # Timer Label
+              - label:
+                  id: timer_label
+                  align: center
+                  text: "00:00"
+                  text_color: 0x00FF00
+
+        # Timer Progress Bar (unten)
+        - bar:
+            id: timer_progress
+            x: 0
+            y: 225
+            width: 320
+            height: 15
+            min_value: 0
+            max_value: 100
+            value: 0
+            bg_color: 0x1e1e1e
+            indicator:
+              bg_color: 0x00FF00
+            hidden: true
+
+        # Mute Button (unten rechts)
+        - button:
+            id: mute_button
+            x: 255
+            y: 195
+            width: 60
+            height: 35
+            on_click:
+              - rtttl.play: "mario:d=4,o=5,b=100:16e6,16e6,32p,8e6,16c6,8e6,8g6,8p,8g,8p,8c6,16p,8g,16p,8e,16p,8a,8b,16a#,8a,16g.,16e6,16g6,8a6,16f6,8g6,8e6,16c6,16d6,8b,16p,8c6,16p,8g,16p,8e,16p,8a,8b,16a#,8a,16g.,16e6,16g6,8a6,16f6,8g6,8e6,16c6,16d6,8b,8p,16g6,16f#6,16f6,16d#6,16p,16e6,16p,16g#,16a,16c6,16p,16a,16c6,16d6,8p,16g6,16f#6,16f6,16d#6,16p,16e6,16p,16c7,16p,16c7,16c7,p,16g6,16f#6,16f6,16d#6,16p,16e6,16p,16g#,16a,16c6,16p,16a,16c6,16d6,8p,16d#6,8p,16d6,8p,16c6"
+              - switch.toggle: mute
+            widgets:
+              - label:
+                  text: "STUMM"
+                  align: center
+                  text_font: font_text_small
+
+# ============================================
+# Buzzer Configuration
+# ============================================
+rtttl:
+  id: buzzer
+  output: buzzer_output
+
+# ============================================
+# I2S Audio (INMP441 Microphone)
+# ============================================
+i2s_audio:
+  - id: i2s_audio_bus
+    i2s_lrclk_pin: GPIO25  # WS
+    i2s_bclk_pin: GPIO26   # SCK
+
+microphone:
+  - platform: i2s_audio
+    id: external_microphone
+    i2s_din_pin: GPIO33    # SD
+    adc_type: external
+    pdm: false
+    channel: left
+    bits_per_sample: 32bit
+    i2s_audio_id: i2s_audio_bus
+
+# ============================================
+# Micro Wake Word (On-Device Wake Word Detection)
+# Optimized with PSRAM for faster model loading
+# ============================================
+micro_wake_word:
+  id: mww
+  models:
+    - hey_jarvis
+    - okay_nabu
+    - alexa
+  on_wake_word_detected:
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+
+# ============================================
+# Voice Assistant
+# ============================================
+voice_assistant:
+  id: va
+  microphone: external_microphone
+  micro_wake_word: mww
+  use_wake_word: true
+  noise_suppression_level: 2
+  auto_gain: 31dBFS
+  volume_multiplier: 2.0
+
+  on_listening:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_listening_phase_id};
+    - text_sensor.template.publish:
+        id: text_request
+        state: "..."
+    - text_sensor.template.publish:
+        id: text_response
+        state: "..."
+    - rtttl.play: "short:d=4,o=5,b=100:16e6"
+    - script.execute: update_ui
+    - script.execute: reset_display_timeout
+
+  on_stt_vad_end:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_thinking_phase_id};
+    - script.execute: update_ui
+
+  on_stt_end:
+    - text_sensor.template.publish:
+        id: text_request
+        state: !lambda "return x;"
+    - rtttl.play: "short:d=4,o=5,b=100:16e6,16e6"
+    - script.execute: update_ui
+
+  on_intent_end:
+    - text_sensor.template.publish:
+        id: text_response
+        state: "Erledigt!"
+    - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
+    - script.execute: update_ui
+
+  on_tts_start:
+    - text_sensor.template.publish:
+        id: text_response
+        state: !lambda "return x;"
+    - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
+    - script.execute: update_ui
+
+  on_end:
+    - delay: 1s
+    # Restart only mWW if enabled; streaming wake words automatically restart
+    - if:
+        condition:
+          - lambda: return id(wake_word_engine_location).state == "On device";
+        then:
+          - lambda: id(va).set_use_wake_word(false);
+          - micro_wake_word.start:
+    # Keep response visible for 5 seconds before returning to idle
+    - delay: 5s
+    - script.execute: set_idle_or_mute_phase
+    - script.execute: update_ui
+    - text_sensor.template.publish:
+        id: text_request
+        state: ""
+    - text_sensor.template.publish:
+        id: text_response
+        state: ""
+
+  on_error:
+    - if:
+        condition:
+          lambda: return !id(init_in_progress);
+        then:
+          - lambda: id(voice_assistant_phase) = ${voice_assist_error_phase_id};
+          - rtttl.play: "error:d=4,o=5,b=100:8a4,8a4,8a4"
+          - script.execute: update_ui
+          - delay: 1s
+          - if:
+              condition:
+                switch.is_off: mute
+              then:
+                - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
+              else:
+                - lambda: id(voice_assistant_phase) = ${voice_assist_muted_phase_id};
+          - script.execute: update_ui
+
+  on_client_connected:
+    - lambda: id(init_in_progress) = false;
+    - script.execute: start_wake_word
+    - script.execute: set_idle_or_mute_phase
+    - script.execute: update_ui
+
+  on_client_disconnected:
+    - script.execute: stop_wake_word
+    - lambda: id(voice_assistant_phase) = ${voice_assist_not_ready_phase_id};
+    - script.execute: update_ui
+
+  on_timer_started:
+    - script.execute: update_ui
+  on_timer_cancelled:
+    - script.execute: update_ui
+  on_timer_updated:
+    - script.execute: update_ui
+  on_timer_tick:
+    - script.execute: update_ui
+  on_timer_finished:
+    - switch.turn_on: timer_ringing
+    - lambda: id(voice_assistant_phase) = ${voice_assist_timer_finished_phase_id};
+    - script.execute: update_ui
+
+# ============================================
+# Scripts
+# ============================================
+script:
+  - id: update_ui
+    then:
+      - lambda: |-
+          // Status-Updates basierend auf Phase
+          auto lbl_status = id(status_label);
+          auto ind_status = id(status_indicator);
+          auto ico_status = id(status_icon);
+          auto lbl_request = id(request_label);
+          auto lbl_connection = id(connection_label);
+          auto cont_timer = id(timer_container);
+          auto lbl_timer = id(timer_label);
+          auto bar_timer = id(timer_progress);
+
+          // Connection Status
+          if (!id(wifi_connected)) {
+            lv_label_set_text(lbl_connection, "\U000F05A9");  // mdi:wifi
+            lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0xFF0000), 0);
+          } else if (!id(api_connected)) {
+            lv_label_set_text(lbl_connection, "\U000F07D0");  // mdi:home
+            lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0xFFAA00), 0);
+          } else {
+            lv_label_set_text(lbl_connection, "\U000F012C");  // mdi:check-circle
+            lv_obj_set_style_text_color(lbl_connection, lv_color_hex(0x00FF00), 0);
+          }
+
+          // Phase-basiertes UI Update
+          switch(id(voice_assistant_phase)) {
+            case ${voice_assist_listening_phase_id}:
+              lv_label_set_text(lbl_status, "Höre");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x00FF00), 0);
+              lv_label_set_text(ico_status, "\U000F036C");  // mdi:microphone
+              lv_label_set_text(lbl_request, "Höre...");
+              break;
+
+            case ${voice_assist_thinking_phase_id}:
+              lv_label_set_text(lbl_status, "Denke");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFFAA00), 0);
+              lv_label_set_text(ico_status, "\U000F02A5");  // mdi:dots-horizontal
+              lv_label_set_text(lbl_request, id(text_request).state.c_str());
+              break;
+
+            case ${voice_assist_replying_phase_id}:
+              lv_label_set_text(lbl_status, "Antworte");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
+              lv_label_set_text(ico_status, "\U000F0627");  // mdi:message-text
+              lv_label_set_text(lbl_request, id(text_response).state.c_str());
+              break;
+
+            case ${voice_assist_error_phase_id}:
+              lv_label_set_text(lbl_status, "Fehler");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
+              lv_label_set_text(ico_status, "\U000F0026");  // mdi:alert-circle
+              lv_label_set_text(lbl_request, "Fehler!");
+              break;
+
+            case ${voice_assist_muted_phase_id}:
+              lv_label_set_text(lbl_status, "Mic aus");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x404040), 0);
+              lv_label_set_text(ico_status, "\U000F036D");  // mdi:microphone-off
+              lv_label_set_text(lbl_request, "Mikro aus");
+              break;
+
+            case ${voice_assist_not_ready_phase_id}:
+              lv_label_set_text(lbl_status, "Nicht bereit");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF0000), 0);
+              lv_label_set_text(ico_status, "\U000F0026");  // mdi:alert-circle
+              lv_label_set_text(lbl_request, "Verbinde...");
+              break;
+
+            case ${voice_assist_timer_finished_phase_id}:
+              lv_label_set_text(lbl_status, "Timer fertig DONE");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0xFF00FF), 0);
+              lv_label_set_text(ico_status, "\U000F0954");  // mdi:timer
+              lv_label_set_text(lbl_request, "Timer fertig!");
+              break;
+
+            default:  // IDLE
+              lv_label_set_text(lbl_status, "Bereit");
+              lv_obj_set_style_bg_color(ind_status, lv_color_hex(0x0080FF), 0);
+              lv_label_set_text(ico_status, "\U000F098F");  // mdi:sleep
+              lv_label_set_text(lbl_request, "Sag 'Hey Jarvis'");
+          }
+
+          // Timer Display
+          const auto timers = id(va).get_timers();
+          bool has_active_timer = false;
+
+          if (timers.size() > 0) {
+            for (auto &timer : timers) {
+              if (timer.second.is_active) {
+                has_active_timer = true;
+                int hours = timer.second.seconds_left / 3600;
+                int minutes = (timer.second.seconds_left % 3600) / 60;
+                int seconds = timer.second.seconds_left % 60;
+
+                char time_str[10];
+                if (hours > 0) {
+                  snprintf(time_str, sizeof(time_str), "%02d:%02d", hours, minutes);
+                } else {
+                  snprintf(time_str, sizeof(time_str), "%02d:%02d", minutes, seconds);
+                }
+                lv_label_set_text(lbl_timer, time_str);
+
+                // Progress berechnen
+                int progress = 100;
+                if (timer.second.total_seconds > 0) {
+                  progress = (timer.second.seconds_left * 100) / timer.second.total_seconds;
+                }
+                lv_bar_set_value(bar_timer, progress, LV_ANIM_OFF);
+
+                lv_obj_clear_flag(cont_timer, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(bar_timer, LV_OBJ_FLAG_HIDDEN);
+                break;
+              }
+            }
+          }
+
+          if (!has_active_timer) {
+            lv_obj_add_flag(cont_timer, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(bar_timer, LV_OBJ_FLAG_HIDDEN);
+          }
+
+  - id: start_wake_word
+    then:
+      - if:
+          condition:
+            and:
+              - not:
+                  - voice_assistant.is_running:
+              - lambda: return id(wake_word_engine_location).state == "On device";
+          then:
+            - lambda: id(va).set_use_wake_word(false);
+            - micro_wake_word.start:
+      - if:
+          condition:
+            and:
+              - not:
+                  - voice_assistant.is_running:
+              - lambda: return id(wake_word_engine_location).state == "In Home Assistant";
+          then:
+            - lambda: id(va).set_use_wake_word(true);
+            - voice_assistant.start_continuous:
+
+  - id: stop_wake_word
+    then:
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).state == "In Home Assistant";
+          then:
+            - lambda: id(va).set_use_wake_word(false);
+            - voice_assistant.stop:
+      - if:
+          condition:
+            lambda: return id(wake_word_engine_location).state == "On device";
+          then:
+            - micro_wake_word.stop:
+
+  - id: set_idle_or_mute_phase
+    then:
+      - if:
+          condition:
+            switch.is_off: mute
+          then:
+            - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
+          else:
+            - lambda: id(voice_assistant_phase) = ${voice_assist_muted_phase_id};
+
+  - id: reset_display_timeout
+    mode: restart
+    then:
+      # Set display to full brightness with smooth transition
+      - light.turn_on:
+          id: display_backlight
+          brightness: !lambda "return id(display_brightness_config).state / 100.0;"
+          transition_length: 300ms
+      # Wait for configured timeout, then dim
+      - delay: !lambda "return id(display_timeout).state * 1000;"
+      - light.turn_on:
+          id: display_backlight
+          brightness: !lambda "return id(display_dim_brightness).state / 100.0;"
+          transition_length: 1s
+
+# ============================================
+# Switches
+# ============================================
+switch:
+  - platform: template
+    name: Mute
+    id: mute
+    icon: "mdi:microphone-off"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    on_turn_off:
+      - microphone.unmute:
+      - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
+      - script.execute: update_ui
+    on_turn_on:
+      - microphone.mute:
+      - lambda: id(voice_assistant_phase) = ${voice_assist_muted_phase_id};
+      - script.execute: update_ui
+
+  - platform: template
+    id: timer_ringing
+    optimistic: true
+    internal: true
+    restore_mode: ALWAYS_OFF
+    on_turn_off:
+      - rtttl.stop:
+
+# ============================================
+# Select Components
+# ============================================
+select:
+  - platform: template
+    entity_category: config
+    name: Wake word engine location
+    id: wake_word_engine_location
+    icon: "mdi:account-voice"
+    optimistic: true
+    restore_value: true
+    options:
+      - In Home Assistant
+      - On device
+    initial_option: On device
+    on_value:
+      - if:
+          condition:
+            lambda: return !id(init_in_progress);
+          then:
+            - wait_until:
+                lambda: return id(voice_assistant_phase) == ${voice_assist_muted_phase_id} || id(voice_assistant_phase) == ${voice_assist_idle_phase_id};
+            - if:
+                condition:
+                  lambda: return x == "In Home Assistant";
+                then:
+                  - micro_wake_word.stop
+                  - delay: 500ms
+                  - if:
+                      condition:
+                        switch.is_off: mute
+                      then:
+                        - lambda: id(va).set_use_wake_word(true);
+                        - voice_assistant.start_continuous:
+            - if:
+                condition:
+                  lambda: return x == "On device";
+                then:
+                  - lambda: id(va).set_use_wake_word(false);
+                  - voice_assistant.stop
+                  - delay: 500ms
+                  - if:
+                      condition:
+                        switch.is_off: mute
+                      then:
+                        - micro_wake_word.start
+
+  - platform: template
+    entity_category: config
+    name: Wake word model
+    id: wake_word_model
+    icon: "mdi:microphone-message"
+    optimistic: true
+    restore_value: true
+    options:
+      - hey_jarvis
+      - okay_nabu
+      - alexa
+    initial_option: hey_jarvis
+
+# ============================================
+# Binary Sensors
+# ============================================
+binary_sensor:
+  - platform: status
+    name: "Status"
+    id: system_status
+
+# ============================================
+# Sensors
+# ============================================
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+  - platform: uptime
+    name: "Uptime"
+
+# ============================================
+# Text Sensors
+# ============================================
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+    ssid:
+      name: "SSID"
+
+  - id: text_request
+    platform: template
+    on_value:
+      lambda: |-
+        if(id(text_request).state.length() > 28) {
+          std::string name = id(text_request).state.c_str();
+          std::string truncated = esphome::str_truncate(name.c_str(), 27);
+          id(text_request).state = (truncated + "...").c_str();
+        }
+
+  - id: text_response
+    platform: template
+    on_value:
+      lambda: |-
+        // Automatischer Zeilenumbruch für LVGL Label
+        // Label Breite: 169px, Font: 13px, ca. 23 Zeichen pro Zeile
+        std::string text = id(text_response).state.c_str();
+        std::string result = "";
+        int max_chars_per_line = 23;
+        int current_line_length = 0;
+        std::string current_word = "";
+
+        for (size_t i = 0; i < text.length(); i++) {
+          char c = text[i];
+
+          if (c == ' ' || c == '\n' || i == text.length() - 1) {
+            // Wort zu Ende
+            if (i == text.length() - 1 && c != ' ' && c != '\n') {
+              current_word += c;
+            }
+
+            // Prüfen ob Wort in aktuelle Zeile passt
+            if (current_line_length + current_word.length() + (current_line_length > 0 ? 1 : 0) > max_chars_per_line) {
+              // Neue Zeile beginnen
+              if (current_line_length > 0) {
+                result += "\n";
+              }
+              result += current_word;
+              current_line_length = current_word.length();
+            } else {
+              // Wort in aktuelle Zeile einfügen
+              if (current_line_length > 0 && current_word.length() > 0) {
+                result += " ";
+                current_line_length++;
+              }
+              result += current_word;
+              current_line_length += current_word.length();
+            }
+
+            current_word = "";
+          } else {
+            current_word += c;
+          }
+        }
+
+        id(text_response).state = result.c_str();
+
+  # Button configuration status (read-only, shows current values)
+  - platform: template
+    name: "Button 1 Current Label"
+    icon: "mdi:label"
+    lambda: |-
+      return id(button_1_label_text);
+    update_interval: 60s
+
+  - platform: template
+    name: "Button 1 Current Automation"
+    icon: "mdi:robot"
+    lambda: |-
+      return id(button_1_automation);
+    update_interval: 60s
+
+  - platform: template
+    name: "Button 2 Current Label"
+    icon: "mdi:label"
+    lambda: |-
+      return id(button_2_label_text);
+    update_interval: 60s
+
+  - platform: template
+    name: "Button 2 Current Automation"
+    icon: "mdi:robot"
+    lambda: |-
+      return id(button_2_automation);
+    update_interval: 60s
+
+# ============================================
+# Text Input Components
+# ============================================
+text:
+  - platform: template
+    name: "Button 1 Label"
+    id: button_1_label_input
+    icon: "mdi:label"
+    optimistic: true
+    min_length: 1
+    max_length: 20
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_1_label_text) = x;
+          auto lbl = id(action_button_1_label);
+          lv_label_set_text(lbl, x.c_str());
+
+  - platform: template
+    name: "Button 1 Automation"
+    id: button_1_automation_input
+    icon: "mdi:robot"
+    optimistic: true
+    min_length: 1
+    max_length: 50
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_1_automation) = x;
+
+  - platform: template
+    name: "Button 2 Label"
+    id: button_2_label_input
+    icon: "mdi:label"
+    optimistic: true
+    min_length: 1
+    max_length: 20
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_2_label_text) = x;
+          auto lbl = id(action_button_2_label);
+          lv_label_set_text(lbl, x.c_str());
+
+  - platform: template
+    name: "Button 2 Automation"
+    id: button_2_automation_input
+    icon: "mdi:robot"
+    optimistic: true
+    min_length: 1
+    max_length: 50
+    mode: text
+    entity_category: config
+    on_value:
+      - lambda: |-
+          id(button_2_automation) = x;
+
+# ============================================
+# Number Components (Display Settings)
+# ============================================
+number:
+  - platform: template
+    name: "Display Brightness"
+    id: display_brightness_config
+    icon: "mdi:brightness-6"
+    entity_category: config
+    min_value: 10
+    max_value: 100
+    step: 5
+    initial_value: 100
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "%"
+    on_value:
+      - script.execute: reset_display_timeout
+
+  - platform: template
+    name: "Display Dim Brightness"
+    id: display_dim_brightness
+    icon: "mdi:brightness-5"
+    entity_category: config
+    min_value: 5
+    max_value: 50
+    step: 5
+    initial_value: 20
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "%"
+
+  - platform: template
+    name: "Display Timeout"
+    id: display_timeout
+    icon: "mdi:timer-outline"
+    entity_category: config
+    min_value: 5
+    max_value: 300
+    step: 5
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "s"
+
+  - platform: template
+    name: "Microphone Gain"
+    id: microphone_gain_config
+    icon: "mdi:microphone"
+    entity_category: config
+    min_value: 0
+    max_value: 31
+    step: 1
+    initial_value: 31
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "dBFS"
+
+  - platform: template
+    name: "Wake Word Threshold"
+    id: wake_word_threshold_config
+    icon: "mdi:ear-hearing"
+    entity_category: config
+    min_value: 0.5
+    max_value: 0.99
+    step: 0.01
+    initial_value: 0.90
+    optimistic: true
+    restore_value: true
+
+# ============================================
+# Fonts with Icon Support
+# ============================================
+font:
+  # Large font for status icons (64px)
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_icons_large
+    size: 64
+    bpp: 4
+    glyphs: " "
+    extras:
+      - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf
+        glyphs: [
+          "\U000F036C",  # mdi:microphone
+          "\U000F098F",  # mdi:sleep
+          "\U000F02A5",  # mdi:dots-horizontal
+          "\U000F0627",  # mdi:message-text
+          "\U000F0026",  # mdi:alert-circle
+          "\U000F036D",  # mdi:microphone-off
+          "\U000F0954",  # mdi:timer
+        ]
+
+  # Small font for connection status (20px)
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_icons_small
+    size: 20
+    bpp: 4
+    glyphs: " "
+    extras:
+      - file: https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf
+        glyphs: [
+          "\U000F05A9",  # mdi:wifi
+          "\U000F07D0",  # mdi:home
+          "\U000F012C",  # mdi:check-circle
+        ]
+
+  # Text fonts for German language support
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_text_medium
+    size: 16
+    bpp: 4
+    glyphs: " !\"#%&'()*+,-./:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyzäöüÄÖÜß0123456789"
+
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 300
+    id: font_text_small
+    size: 13
+    bpp: 4
+    glyphs: " !\"#%&'()*+,-./:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyzäöüÄÖÜß0123456789"
+
+# ============================================
+# Globals
+# ============================================
+globals:
+  - id: init_in_progress
+    type: bool
+    restore_value: false
+    initial_value: "true"
+  - id: voice_assistant_phase
+    type: int
+    restore_value: false
+    initial_value: ${voice_assist_not_ready_phase_id}
+  - id: wifi_connected
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: api_connected
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+  # Button 1 Configuration
+  - id: button_1_label_text
+    type: std::string
+    restore_value: true
+    initial_value: '"Button 1"'
+  - id: button_1_automation
+    type: std::string
+    restore_value: true
+    initial_value: '"automation.example_1"'
+
+  # Button 2 Configuration
+  - id: button_2_label_text
+    type: std::string
+    restore_value: true
+    initial_value: '"Button 2"'
+  - id: button_2_automation
+    type: std::string
+    restore_value: true
+    initial_value: '"automation.example_2"'
