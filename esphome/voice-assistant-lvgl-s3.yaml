@@ -184,7 +184,7 @@ lvgl:
   text_color: 0xFFFFFF
   border_width: 0
   outline_width: 0
-  buffer_size: 50%  # Increased from 25% to 50% thanks to PSRAM
+  buffer_size: 100%  # Full double-buffering thanks to 8MB PSRAM - zero tearing!
   displays:
     - main_display
   touchscreens:

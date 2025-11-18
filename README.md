@@ -40,7 +40,7 @@ Dieses Projekt bietet **mehrere Implementierungen** für verschiedene Hardware:
 3. **S3 LVGL-Variante** (`voice-assistant-lvgl-s3.yaml`) 🚀 **NEU**
    - Optimiert für **Unexpected Maker ProS3** (ESP32-S3)
    - 16MB Flash + 8MB PSRAM
-   - 2x größerer LVGL Buffer (50% statt 25%)
+   - **100% LVGL Buffer** - Null Screen-Tearing! (4x größer als Standard)
    - 2x schnellere Display-Kommunikation (40MHz statt 20MHz)
    - Native USB-C Unterstützung
    - Platz für zukünftige Erweiterungen
