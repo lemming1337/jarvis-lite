@@ -150,6 +150,89 @@ api:
             id(tmc_motor_enabled) = enable;
             id(tmc_update_motor_state).execute();
 
+    # Advanced TMC5160T Services
+    - service: tmc_home_to_endstop
+      variables:
+        direction: int  # -1 for left, 1 for right
+      then:
+        - lambda: |-
+            ESP_LOGI("TMC5160T", "Homing to endstop, direction: %d", direction);
+            id(tmc_home_with_stallguard).execute(direction);
+
+    - service: tmc_set_position
+      variables:
+        position: int
+      then:
+        - lambda: |-
+            ESP_LOGI("TMC5160T", "Setting current position to: %d", position);
+            id(tmc_write_register)(0x21, (uint32_t)position);  // XACTUAL
+
+    - service: tmc_clear_errors
+      then:
+        - lambda: |-
+            ESP_LOGI("TMC5160T", "Clearing error flags");
+            // Clear GSTAT by writing 1s to the bits
+            id(tmc_write_register)(0x01, 0x00000007);
+            id(tmc_stall_count) = 0;
+            id(tmc_short_count) = 0;
+            id(tmc_overtemp_count) = 0;
+
+    - service: tmc_set_microsteps
+      variables:
+        microsteps: int
+      then:
+        - lambda: |-
+            ESP_LOGI("TMC5160T", "Setting microsteps to: %d", microsteps);
+            // Calculate MRES value (0=256, 1=128, 2=64, ..., 8=1)
+            uint8_t mres = 8;
+            if (microsteps >= 256) mres = 0;
+            else if (microsteps >= 128) mres = 1;
+            else if (microsteps >= 64) mres = 2;
+            else if (microsteps >= 32) mres = 3;
+            else if (microsteps >= 16) mres = 4;
+            else if (microsteps >= 8) mres = 5;
+            else if (microsteps >= 4) mres = 6;
+            else if (microsteps >= 2) mres = 7;
+            else mres = 8;
+
+            id(tmc_microsteps) = (1 << (8 - mres));
+
+            // Update CHOPCONF with new MRES
+            uint32_t chopconf = id(tmc_read_register)(0x6C);
+            chopconf = (chopconf & 0xF0FFFFFF) | (mres << 24);
+            id(tmc_write_register)(0x6C, chopconf);
+
+    - service: tmc_read_register_service
+      variables:
+        address: int
+      then:
+        - lambda: |-
+            uint32_t value = id(tmc_read_register)(address);
+            ESP_LOGI("TMC5160T", "Register 0x%02X = 0x%08X", address, value);
+
+    - service: tmc_write_register_service
+      variables:
+        address: int
+        value: int
+      then:
+        - lambda: |-
+            ESP_LOGI("TMC5160T", "Writing 0x%08X to register 0x%02X", value, address);
+            id(tmc_write_register)(address, value);
+
+    - service: tmc_tune_stallguard
+      variables:
+        velocity: int
+      then:
+        - lambda: |-
+            ESP_LOGI("TMC5160T", "Starting StallGuard tuning at velocity: %d", velocity);
+            // Enable StealthChop first
+            id(tmc_spreadcycle_mode).turn_off();
+            delay(100);
+            // Set velocity mode
+            id(tmc_write_register)(0x20, 0x00000001);  // Velocity mode positive
+            id(tmc_write_register)(0x27, velocity);
+            // User should monitor SG_RESULT sensor and adjust SGT threshold
+
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
@@ -921,6 +1004,140 @@ script:
 
           return result;
 
+  # ============================================
+  # TMC5160T Helper Scripts
+  # ============================================
+
+  - id: tmc_update_coolstep
+    then:
+      - lambda: |-
+          if (!id(tmc_driver_initialized) || !id(tmc_coolstep_enabled)) return;
+
+          ESP_LOGI("TMC5160T", "Updating CoolStep configuration");
+
+          uint8_t semin = (uint8_t)id(tmc_coolstep_semin).state;
+          uint8_t semax = (uint8_t)id(tmc_coolstep_semax).state;
+          uint8_t sedn = (uint8_t)id(tmc_coolstep_sedn).state;
+          uint8_t seup = (uint8_t)id(tmc_coolstep_seup).state;
+          uint8_t seimin = (uint8_t)id(tmc_coolstep_seimin).state;
+          int8_t sgt = id(tmc_sgt_value);
+
+          // Build COOLCONF register
+          // SEMIN: bits 0-3, SEUP: bits 5-6, SEMAX: bits 8-11,
+          // SEDN: bits 13-14, SEIMIN: bit 15, SGT: bits 16-22, SFILT: bit 24
+          uint32_t coolconf = (semin & 0x0F) |
+                             ((seup & 0x03) << 5) |
+                             ((semax & 0x0F) << 8) |
+                             ((sedn & 0x03) << 13) |
+                             ((seimin & 0x01) << 15) |
+                             (((sgt & 0x7F) << 16)) |
+                             (1 << 24);  // SFILT = 1 (filtered)
+
+          id(tmc_write_register)(0x6D, coolconf);  // COOLCONF
+          ESP_LOGI("TMC5160T", "CoolStep updated: COOLCONF=0x%08X", coolconf);
+
+  - id: tmc_update_chopconf
+    then:
+      - lambda: |-
+          if (!id(tmc_driver_initialized)) return;
+
+          ESP_LOGI("TMC5160T", "Updating Chopper configuration");
+
+          uint8_t toff = (uint8_t)id(tmc_chopper_toff).state;
+          uint8_t hstrt = (uint8_t)id(tmc_chopper_hstrt).state;
+          uint8_t hend = (uint8_t)id(tmc_chopper_hend).state;
+          uint8_t tbl = (uint8_t)id(tmc_chopper_tbl).state;
+          uint8_t mres = 0;  // 256 microsteps
+
+          // Calculate MRES from microsteps global
+          if (id(tmc_microsteps) >= 256) mres = 0;
+          else if (id(tmc_microsteps) >= 128) mres = 1;
+          else if (id(tmc_microsteps) >= 64) mres = 2;
+          else if (id(tmc_microsteps) >= 32) mres = 3;
+          else if (id(tmc_microsteps) >= 16) mres = 4;
+          else if (id(tmc_microsteps) >= 8) mres = 5;
+          else if (id(tmc_microsteps) >= 4) mres = 6;
+          else if (id(tmc_microsteps) >= 2) mres = 7;
+          else mres = 8;
+
+          // Build CHOPCONF register
+          // TOFF: bits 0-3, HSTRT: bits 4-6, HEND: bits 7-10,
+          // TBL: bits 15-16, MRES: bits 24-27, INTPOL: bit 28, DEDGE: bit 29, DISS2G/DISS2VS: bits 30-31
+          uint32_t chopconf = (toff & 0x0F) |
+                             ((hstrt & 0x07) << 4) |
+                             ((hend & 0x0F) << 7) |
+                             ((tbl & 0x03) << 15) |
+                             ((mres & 0x0F) << 24) |
+                             (1 << 28);  // INTPOL = 1 (interpolation to 256)
+
+          id(tmc_write_register)(0x6C, chopconf);  // CHOPCONF
+          ESP_LOGI("TMC5160T", "Chopper updated: CHOPCONF=0x%08X", chopconf);
+
+  - id: tmc_home_with_stallguard
+    parameters:
+      direction: int
+    then:
+      - lambda: |-
+          if (!id(tmc_driver_initialized)) {
+            ESP_LOGW("TMC5160T", "Driver not initialized, cannot home");
+            return;
+          }
+
+          ESP_LOGI("TMC5160T", "Starting homing sequence, direction: %d", direction);
+          id(tmc_is_homing) = true;
+          id(tmc_is_homed) = false;
+
+          // Enable StallGuard
+          if (!id(tmc_stallguard_enabled)) {
+            id(tmc_stallguard_enable).turn_on();
+            delay(100);
+          }
+
+          // Set moderate homing speed
+          int32_t homing_velocity = 20000 * direction;
+          id(tmc_write_register)(0x20, 0x00000001);  // Velocity mode
+          id(tmc_write_register)(0x27, abs(homing_velocity));  // VMAX
+
+          // Wait for stall detection (DIAG0) or endstop
+          int timeout = 30000;  // 30 seconds timeout
+          int elapsed = 0;
+          bool stalled = false;
+
+          while (elapsed < timeout && !stalled) {
+            // Check for stall via DIAG0 or endstop
+            if (direction < 0 && id(tmc_left_endstop).state) {
+              stalled = true;
+              ESP_LOGI("TMC5160T", "Left endstop reached");
+            } else if (direction > 0 && id(tmc_right_endstop).state) {
+              stalled = true;
+              ESP_LOGI("TMC5160T", "Right endstop reached");
+            } else if (id(tmc_diag0).state) {
+              stalled = true;
+              ESP_LOGI("TMC5160T", "StallGuard triggered");
+            }
+
+            delay(10);
+            elapsed += 10;
+          }
+
+          // Stop motor
+          id(tmc_write_register)(0x20, 0x00000003);  // Hold mode
+          id(tmc_write_register)(0x27, 0);  // VMAX = 0
+
+          if (stalled) {
+            // Set current position as home (0)
+            id(tmc_write_register)(0x21, 0);  // XACTUAL = 0
+            id(tmc_is_homed) = true;
+            ESP_LOGI("TMC5160T", "Homing completed successfully");
+          } else {
+            ESP_LOGW("TMC5160T", "Homing timeout!");
+          }
+
+          id(tmc_is_homing) = false;
+
+          // Return to positioning mode
+          id(tmc_write_register)(0x20, 0x00000000);  // Positioning mode
+
 # ============================================
 # Switches
 # ============================================
@@ -964,6 +1181,160 @@ switch:
       - lambda: |-
           id(tmc_motor_enabled) = false;
           id(tmc_update_motor_state).execute();
+
+  - platform: template
+    name: "TMC StallGuard2 Enable"
+    id: tmc_stallguard_enable
+    icon: "mdi:car-brake-alert"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    on_turn_on:
+      - lambda: |-
+          id(tmc_stallguard_enabled) = true;
+          // Enable DIAG0 output for StallGuard in GCONF
+          uint32_t gconf = id(tmc_read_register)(0x00);
+          gconf |= (1 << 7);  // DIAG0_STALL
+          id(tmc_write_register)(0x00, gconf);
+          ESP_LOGI("TMC5160T", "StallGuard2 enabled");
+    on_turn_off:
+      - lambda: |-
+          id(tmc_stallguard_enabled) = false;
+          uint32_t gconf = id(tmc_read_register)(0x00);
+          gconf &= ~(1 << 7);  // Clear DIAG0_STALL
+          id(tmc_write_register)(0x00, gconf);
+          ESP_LOGI("TMC5160T", "StallGuard2 disabled");
+
+  - platform: template
+    name: "TMC CoolStep Enable"
+    id: tmc_coolstep_enable
+    icon: "mdi:snowflake"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    on_turn_on:
+      - lambda: |-
+          id(tmc_coolstep_enabled) = true;
+          id(tmc_update_coolstep).execute();
+          ESP_LOGI("TMC5160T", "CoolStep enabled");
+    on_turn_off:
+      - lambda: |-
+          id(tmc_coolstep_enabled) = false;
+          // Disable CoolStep by setting SEMIN=0
+          uint32_t coolconf = id(tmc_read_register)(0x6D);
+          coolconf &= 0xFFFFFFF0;  // Clear SEMIN bits
+          id(tmc_write_register)(0x6D, coolconf);
+          ESP_LOGI("TMC5160T", "CoolStep disabled");
+
+  - platform: template
+    name: "TMC DcStep Enable"
+    id: tmc_dcstep_enable
+    icon: "mdi:fast-forward"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    on_turn_on:
+      - lambda: |-
+          id(tmc_dcstep_enabled) = true;
+          // Set THIGH to enable DcStep
+          uint32_t thigh = (uint32_t)id(tmc_thigh).state;
+          if (thigh == 0) thigh = 100000;  // Default threshold
+          id(tmc_write_register)(0x15, thigh);
+          // Configure DCCTRL
+          uint32_t dcctrl = ((uint32_t)id(tmc_dcstep_time).state & 0x3FF) |
+                           (((uint32_t)id(tmc_dcstep_sgt).state & 0xFF) << 16);
+          id(tmc_write_register)(0x6E, dcctrl);
+          ESP_LOGI("TMC5160T", "DcStep enabled");
+    on_turn_off:
+      - lambda: |-
+          id(tmc_dcstep_enabled) = false;
+          id(tmc_write_register)(0x15, 0);  // Clear THIGH
+          ESP_LOGI("TMC5160T", "DcStep disabled");
+
+  - platform: template
+    name: "TMC SpreadCycle Mode"
+    id: tmc_spreadcycle_mode
+    icon: "mdi:wave"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    on_turn_on:
+      - lambda: |-
+          // Disable StealthChop by setting TPWMTHRS=0
+          id(tmc_write_register)(0x13, 0);
+          uint32_t gconf = id(tmc_read_register)(0x00);
+          gconf &= ~(1 << 2);  // Clear EN_PWM_MODE
+          id(tmc_write_register)(0x00, gconf);
+          ESP_LOGI("TMC5160T", "SpreadCycle mode activated");
+    on_turn_off:
+      - lambda: |-
+          // Enable StealthChop
+          uint32_t tpwmthrs = (uint32_t)id(tmc_tpwmthrs).state;
+          if (tpwmthrs == 0) tpwmthrs = 500;
+          id(tmc_write_register)(0x13, tpwmthrs);
+          uint32_t gconf = id(tmc_read_register)(0x00);
+          gconf |= (1 << 2);  // Set EN_PWM_MODE
+          id(tmc_write_register)(0x00, gconf);
+          ESP_LOGI("TMC5160T", "StealthChop mode activated");
+
+  - platform: template
+    name: "TMC Encoder Enable"
+    id: tmc_encoder_enable
+    icon: "mdi:rotate-right"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    on_turn_on:
+      - lambda: |-
+          id(tmc_encoder_enabled) = true;
+          // Set encoder constant
+          id(tmc_write_register)(0x3A, (uint32_t)id(tmc_encoder_const).state);
+          // Enable encoder in ENC_MODE
+          id(tmc_write_register)(0x38, 0x00000400);  // Binary mode
+          ESP_LOGI("TMC5160T", "Encoder enabled");
+    on_turn_off:
+      - lambda: |-
+          id(tmc_encoder_enabled) = false;
+          id(tmc_write_register)(0x38, 0);  // Disable ENC_MODE
+          ESP_LOGI("TMC5160T", "Encoder disabled");
+
+  - platform: template
+    name: "TMC Endstops Enable"
+    id: tmc_endstops_enable
+    icon: "mdi:arrow-collapse-horizontal"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - lambda: |-
+          // Enable stop switches in SW_MODE (0x34)
+          // Bit 0: stop_l_enable, Bit 1: stop_r_enable
+          id(tmc_write_register)(0x34, 0x00000403);  // Enable both, active low, latch position
+          ESP_LOGI("TMC5160T", "Endstops enabled");
+    on_turn_off:
+      - lambda: |-
+          id(tmc_write_register)(0x34, 0x00000000);
+          ESP_LOGI("TMC5160T", "Endstops disabled");
+
+  - platform: template
+    name: "TMC Shaft Direction Reverse"
+    id: tmc_shaft_reverse
+    icon: "mdi:swap-horizontal"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    on_turn_on:
+      - lambda: |-
+          uint32_t gconf = id(tmc_read_register)(0x00);
+          gconf |= (1 << 4);  // Set SHAFT bit
+          id(tmc_write_register)(0x00, gconf);
+          ESP_LOGI("TMC5160T", "Shaft direction reversed");
+    on_turn_off:
+      - lambda: |-
+          uint32_t gconf = id(tmc_read_register)(0x00);
+          gconf &= ~(1 << 4);  // Clear SHAFT bit
+          id(tmc_write_register)(0x00, gconf);
+          ESP_LOGI("TMC5160T", "Shaft direction normal");
 
 # ============================================
 # Select Components
@@ -1039,7 +1410,36 @@ binary_sensor:
     pin:
       number: GPIO16
       mode: INPUT_PULLUP
-    internal: true
+      inverted: false
+    on_press:
+      - lambda: |-
+          if (id(tmc_stallguard_enabled)) {
+            ESP_LOGW("TMC5160T", "StallGuard2 triggered - Motor stalled!");
+            id(tmc_stall_count) += 1;
+          }
+    on_release:
+      - lambda: |-
+          ESP_LOGI("TMC5160T", "StallGuard cleared");
+
+  - platform: gpio
+    name: "TMC5160T Left Endstop"
+    id: tmc_left_endstop
+    pin:
+      number: GPIO17
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 10ms
+
+  - platform: gpio
+    name: "TMC5160T Right Endstop"
+    id: tmc_right_endstop
+    pin:
+      number: GPIO10
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 10ms
 
 # ============================================
 # Sensors
@@ -1080,6 +1480,111 @@ sensor:
     lambda: |-
       if (!id(tmc_driver_initialized)) return NAN;
       return (float)id(tmc_read_register)(0x6F);  // DRV_STATUS
+
+  - platform: template
+    name: "TMC StallGuard2 Result"
+    id: tmc_stallguard_result
+    icon: "mdi:gauge"
+    unit_of_measurement: "SG"
+    update_interval: 200ms
+    lambda: |-
+      if (!id(tmc_driver_initialized) || !id(tmc_stallguard_enabled)) return NAN;
+      uint32_t drv_status = id(tmc_read_register)(0x6F);
+      return (float)((drv_status >> 0) & 0x3FF);  // SG_RESULT bits 0-9
+
+  - platform: template
+    name: "TMC Load Value"
+    id: tmc_load_value
+    icon: "mdi:weight"
+    unit_of_measurement: "%"
+    update_interval: 500ms
+    lambda: |-
+      if (!id(tmc_driver_initialized) || !id(tmc_coolstep_enabled)) return NAN;
+      uint32_t drv_status = id(tmc_read_register)(0x6F);
+      uint32_t cs_actual = (drv_status >> 16) & 0x1F;  // CS_ACTUAL bits 16-20
+      return (cs_actual * 100.0) / 31.0;
+
+  - platform: template
+    name: "TMC Driver Temperature"
+    id: tmc_temperature
+    icon: "mdi:thermometer"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    update_interval: 5s
+    lambda: |-
+      if (!id(tmc_driver_initialized)) return NAN;
+      uint32_t drv_status = id(tmc_read_register)(0x6F);
+      // Temperature warning flags
+      bool otpw = (drv_status >> 26) & 0x01;  // Overtemperature pre-warning
+      bool ot = (drv_status >> 25) & 0x01;    // Overtemperature
+
+      if (ot) {
+        id(tmc_overtemp_count) += 1;
+        return 150.0;  // Critical overtemperature
+      } else if (otpw) {
+        return 120.0;  // Pre-warning
+      }
+      return NAN;  // Normal - no direct temp readout on TMC5160
+
+  - platform: template
+    name: "TMC Microsteps"
+    id: tmc_microstep_sensor
+    icon: "mdi:stairs"
+    unit_of_measurement: "µsteps"
+    update_interval: never
+    lambda: |-
+      if (!id(tmc_driver_initialized)) return NAN;
+      return (float)id(tmc_microsteps);
+
+  - platform: template
+    name: "TMC Actual Current Scale"
+    id: tmc_actual_current_scale
+    icon: "mdi:current-ac"
+    unit_of_measurement: "/31"
+    update_interval: 500ms
+    lambda: |-
+      if (!id(tmc_driver_initialized)) return NAN;
+      uint32_t drv_status = id(tmc_read_register)(0x6F);
+      return (float)((drv_status >> 16) & 0x1F);  // CS_ACTUAL
+
+  - platform: template
+    name: "TMC TSTEP"
+    id: tmc_tstep_sensor
+    icon: "mdi:timer"
+    unit_of_measurement: "ticks"
+    update_interval: 500ms
+    lambda: |-
+      if (!id(tmc_driver_initialized)) return NAN;
+      return (float)id(tmc_read_register)(0x12);  // TSTEP
+
+  - platform: template
+    name: "TMC Stall Count"
+    id: tmc_stall_count_sensor
+    icon: "mdi:alert-octagon"
+    unit_of_measurement: "events"
+    update_interval: 1s
+    lambda: |-
+      return (float)id(tmc_stall_count);
+
+  - platform: template
+    name: "TMC Short to Ground Count"
+    id: tmc_short_count_sensor
+    icon: "mdi:alert"
+    unit_of_measurement: "events"
+    update_interval: 2s
+    lambda: |-
+      return (float)id(tmc_short_count);
+
+  - platform: template
+    name: "TMC PWM Scale"
+    id: tmc_pwm_scale_sensor
+    icon: "mdi:sine-wave"
+    unit_of_measurement: "/255"
+    update_interval: 500ms
+    lambda: |-
+      if (!id(tmc_driver_initialized)) return NAN;
+      uint32_t pwm_scale = id(tmc_read_register)(0x71);  // PWM_SCALE
+      return (float)(pwm_scale & 0xFF);
 
 # ============================================
 # Text Sensors
@@ -1176,6 +1681,68 @@ text_sensor:
     lambda: |-
       return id(button_2_automation);
     update_interval: 60s
+
+  # TMC5160T Status Text Sensors
+  - platform: template
+    name: "TMC Driver Errors"
+    id: tmc_driver_errors
+    icon: "mdi:alert-circle"
+    update_interval: 1s
+    lambda: |-
+      if (!id(tmc_driver_initialized)) return {"Not initialized"};
+
+      uint32_t drv_status = id(tmc_read_register)(0x6F);
+      uint32_t gstat = id(tmc_read_register)(0x01);
+
+      std::string errors = "";
+
+      // Check GSTAT flags
+      if (gstat & 0x01) errors += "Reset ";
+      if (gstat & 0x02) errors += "DRV_ERR ";
+      if (gstat & 0x04) errors += "UV_CP ";
+
+      // Check DRV_STATUS flags
+      if (drv_status & (1 << 31)) errors += "StallGuard ";
+      if (drv_status & (1 << 30)) errors += "Standstill ";
+      if (drv_status & (1 << 26)) errors += "OTPW ";
+      if (drv_status & (1 << 25)) errors += "OT ";
+      if (drv_status & (1 << 24)) errors += "S2GA ";
+      if (drv_status & (1 << 23)) errors += "S2GB ";
+      if (drv_status & (1 << 22)) errors += "S2VSA ";
+      if (drv_status & (1 << 21)) errors += "S2VSB ";
+      if (drv_status & (1 << 20)) errors += "OLA ";
+      if (drv_status & (1 << 19)) errors += "OLB ";
+
+      if (errors.empty()) return {"OK"};
+      return {errors.c_str()};
+
+  - platform: template
+    name: "TMC Active Mode"
+    id: tmc_active_mode
+    icon: "mdi:cog"
+    update_interval: 2s
+    lambda: |-
+      if (!id(tmc_driver_initialized)) return {"Unknown"};
+
+      uint32_t drv_status = id(tmc_read_register)(0x6F);
+      bool stealthchop = (drv_status >> 30) & 0x01;
+
+      if (id(tmc_dcstep_enabled)) {
+        return {"DcStep"};
+      } else if (stealthchop) {
+        return {"StealthChop"};
+      } else {
+        return {"SpreadCycle"};
+      }
+
+  - platform: template
+    name: "TMC Homing Status"
+    id: tmc_homing_status
+    icon: "mdi:home"
+    lambda: |-
+      if (id(tmc_is_homing)) return {"Homing..."};
+      if (id(tmc_is_homed)) return {"Homed"};
+      return {"Not Homed"};
 
 # ============================================
 # Text Input Components
@@ -1385,6 +1952,495 @@ number:
             id(tmc_write_register)(0x10, ihold_irun);  // IHOLD_IRUN
           }
 
+  # ============================================
+  # TMC5160T Advanced Configuration Numbers
+  # ============================================
+
+  # StallGuard2 Configuration
+  - platform: template
+    name: "TMC StallGuard2 Threshold"
+    id: tmc_stallguard_threshold
+    icon: "mdi:car-brake-alert"
+    entity_category: config
+    min_value: -64
+    max_value: 63
+    step: 1
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            // SGT is bits 16-22 in COOLCONF (0x6D)
+            uint32_t coolconf = id(tmc_read_register)(0x6D);
+            coolconf = (coolconf & 0xFF80FFFF) | (((int8_t)x & 0x7F) << 16);
+            id(tmc_write_register)(0x6D, coolconf);
+            id(tmc_sgt_value) = (int8_t)x;
+          }
+
+  - platform: template
+    name: "TMC StallGuard2 Filter"
+    id: tmc_stallguard_filter
+    icon: "mdi:filter"
+    entity_category: config
+    min_value: 0
+    max_value: 1
+    step: 1
+    initial_value: 1
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            // SFILT bit 24 in COOLCONF
+            uint32_t coolconf = id(tmc_read_register)(0x6D);
+            if (x == 1) {
+              coolconf |= (1 << 24);
+            } else {
+              coolconf &= ~(1 << 24);
+            }
+            id(tmc_write_register)(0x6D, coolconf);
+          }
+
+  # CoolStep Configuration
+  - platform: template
+    name: "TMC CoolStep SEMIN"
+    id: tmc_coolstep_semin
+    icon: "mdi:thermometer-low"
+    entity_category: config
+    min_value: 0
+    max_value: 15
+    step: 1
+    initial_value: 5
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized) && id(tmc_coolstep_enabled)) {
+            id(tmc_update_coolstep).execute();
+          }
+
+  - platform: template
+    name: "TMC CoolStep SEMAX"
+    id: tmc_coolstep_semax
+    icon: "mdi:thermometer-high"
+    entity_category: config
+    min_value: 0
+    max_value: 15
+    step: 1
+    initial_value: 2
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized) && id(tmc_coolstep_enabled)) {
+            id(tmc_update_coolstep).execute();
+          }
+
+  - platform: template
+    name: "TMC CoolStep SEDN"
+    id: tmc_coolstep_sedn
+    icon: "mdi:arrow-down-bold"
+    entity_category: config
+    min_value: 0
+    max_value: 3
+    step: 1
+    initial_value: 1
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized) && id(tmc_coolstep_enabled)) {
+            id(tmc_update_coolstep).execute();
+          }
+
+  - platform: template
+    name: "TMC CoolStep SEUP"
+    id: tmc_coolstep_seup
+    icon: "mdi:arrow-up-bold"
+    entity_category: config
+    min_value: 0
+    max_value: 3
+    step: 1
+    initial_value: 1
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized) && id(tmc_coolstep_enabled)) {
+            id(tmc_update_coolstep).execute();
+          }
+
+  - platform: template
+    name: "TMC CoolStep SEIMIN"
+    id: tmc_coolstep_seimin
+    icon: "mdi:current-dc"
+    entity_category: config
+    min_value: 0
+    max_value: 1
+    step: 1
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized) && id(tmc_coolstep_enabled)) {
+            id(tmc_update_coolstep).execute();
+          }
+
+  # PWM Configuration (StealthChop)
+  - platform: template
+    name: "TMC PWM Amplitude"
+    id: tmc_pwm_ampl
+    icon: "mdi:sine-wave"
+    entity_category: config
+    min_value: 0
+    max_value: 255
+    step: 1
+    initial_value: 128
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            uint32_t pwmconf = id(tmc_read_register)(0x70);
+            pwmconf = (pwmconf & 0xFFFFFF00) | ((uint8_t)x);
+            id(tmc_write_register)(0x70, pwmconf);
+          }
+
+  - platform: template
+    name: "TMC PWM Gradient"
+    id: tmc_pwm_grad
+    icon: "mdi:chart-line"
+    entity_category: config
+    min_value: 0
+    max_value: 255
+    step: 1
+    initial_value: 4
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            uint32_t pwmconf = id(tmc_read_register)(0x70);
+            pwmconf = (pwmconf & 0xFFFF00FF) | (((uint8_t)x) << 8);
+            id(tmc_write_register)(0x70, pwmconf);
+          }
+
+  - platform: template
+    name: "TMC PWM Frequency"
+    id: tmc_pwm_freq
+    icon: "mdi:waveform"
+    entity_category: config
+    min_value: 0
+    max_value: 3
+    step: 1
+    initial_value: 1
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            uint32_t pwmconf = id(tmc_read_register)(0x70);
+            pwmconf = (pwmconf & 0xFFFCFFFF) | (((uint8_t)x) << 16);
+            id(tmc_write_register)(0x70, pwmconf);
+          }
+
+  - platform: template
+    name: "TMC PWM Autoscale"
+    id: tmc_pwm_autoscale
+    icon: "mdi:auto-fix"
+    entity_category: config
+    min_value: 0
+    max_value: 1
+    step: 1
+    initial_value: 1
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            uint32_t pwmconf = id(tmc_read_register)(0x70);
+            if (x == 1) {
+              pwmconf |= (1 << 18);
+            } else {
+              pwmconf &= ~(1 << 18);
+            }
+            id(tmc_write_register)(0x70, pwmconf);
+          }
+
+  # Chopper Configuration
+  - platform: template
+    name: "TMC Chopper TBL"
+    id: tmc_chopper_tbl
+    icon: "mdi:timer-sand"
+    entity_category: config
+    min_value: 0
+    max_value: 3
+    step: 1
+    initial_value: 2
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_update_chopconf).execute();
+          }
+
+  - platform: template
+    name: "TMC Chopper HSTRT"
+    id: tmc_chopper_hstrt
+    icon: "mdi:clock-start"
+    entity_category: config
+    min_value: 0
+    max_value: 7
+    step: 1
+    initial_value: 5
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_update_chopconf).execute();
+          }
+
+  - platform: template
+    name: "TMC Chopper HEND"
+    id: tmc_chopper_hend
+    icon: "mdi:clock-end"
+    entity_category: config
+    min_value: 0
+    max_value: 15
+    step: 1
+    initial_value: 3
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_update_chopconf).execute();
+          }
+
+  - platform: template
+    name: "TMC Chopper TOFF"
+    id: tmc_chopper_toff
+    icon: "mdi:timer-off"
+    entity_category: config
+    min_value: 2
+    max_value: 15
+    step: 1
+    initial_value: 5
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_update_chopconf).execute();
+          }
+
+  # Threshold Speeds
+  - platform: template
+    name: "TMC StealthChop Threshold"
+    id: tmc_tpwmthrs
+    icon: "mdi:speedometer-slow"
+    entity_category: config
+    min_value: 0
+    max_value: 1048575
+    step: 1000
+    initial_value: 500
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "Hz"
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_write_register)(0x13, (uint32_t)x);  // TPWMTHRS
+          }
+
+  - platform: template
+    name: "TMC CoolStep Threshold"
+    id: tmc_tcoolthrs
+    icon: "mdi:speedometer-medium"
+    entity_category: config
+    min_value: 0
+    max_value: 1048575
+    step: 1000
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "Hz"
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_write_register)(0x14, (uint32_t)x);  // TCOOLTHRS
+          }
+
+  - platform: template
+    name: "TMC DcStep Threshold (THIGH)"
+    id: tmc_thigh
+    icon: "mdi:speedometer"
+    entity_category: config
+    min_value: 0
+    max_value: 1048575
+    step: 1000
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "Hz"
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_write_register)(0x15, (uint32_t)x);  // THIGH
+          }
+
+  # DcStep Configuration
+  - platform: template
+    name: "TMC DcStep Time (DC_TIME)"
+    id: tmc_dcstep_time
+    icon: "mdi:timer"
+    entity_category: config
+    min_value: 0
+    max_value: 1023
+    step: 10
+    initial_value: 400
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized) && id(tmc_dcstep_enabled)) {
+            uint32_t dcctrl = id(tmc_read_register)(0x6E);
+            dcctrl = (dcctrl & 0xFFFFFC00) | ((uint32_t)x & 0x3FF);
+            id(tmc_write_register)(0x6E, dcctrl);
+          }
+
+  - platform: template
+    name: "TMC DcStep SGT (DC_SG)"
+    id: tmc_dcstep_sgt
+    icon: "mdi:alpha-s-circle"
+    entity_category: config
+    min_value: 0
+    max_value: 255
+    step: 1
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized) && id(tmc_dcstep_enabled)) {
+            uint32_t dcctrl = id(tmc_read_register)(0x6E);
+            dcctrl = (dcctrl & 0xFFFF00FF) | (((uint32_t)x & 0xFF) << 16);
+            id(tmc_write_register)(0x6E, dcctrl);
+          }
+
+  # Additional Ramp Parameters
+  - platform: template
+    name: "TMC V1"
+    id: tmc_v1
+    icon: "mdi:speedometer-slow"
+    entity_category: config
+    min_value: 0
+    max_value: 500000
+    step: 1000
+    initial_value: 50000
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "steps/s"
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_write_register)(0x25, (uint32_t)x);  // V1
+          }
+
+  - platform: template
+    name: "TMC A1"
+    id: tmc_a1
+    icon: "mdi:speedometer"
+    entity_category: config
+    min_value: 0
+    max_value: 60000
+    step: 100
+    initial_value: 1000
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "steps/s²"
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_write_register)(0x24, (uint32_t)x);  // A1
+          }
+
+  - platform: template
+    name: "TMC D1"
+    id: tmc_d1
+    icon: "mdi:speedometer"
+    entity_category: config
+    min_value: 0
+    max_value: 60000
+    step: 100
+    initial_value: 1000
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "steps/s²"
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_write_register)(0x2A, (uint32_t)x);  // D1
+          }
+
+  - platform: template
+    name: "TMC VSTART"
+    id: tmc_vstart
+    icon: "mdi:play-speed"
+    entity_category: config
+    min_value: 0
+    max_value: 262143
+    step: 1
+    initial_value: 1
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "steps/s"
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_write_register)(0x23, (uint32_t)x);  // VSTART
+          }
+
+  - platform: template
+    name: "TMC VSTOP"
+    id: tmc_vstop
+    icon: "mdi:stop"
+    entity_category: config
+    min_value: 1
+    max_value: 262143
+    step: 1
+    initial_value: 10
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "steps/s"
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized)) {
+            id(tmc_write_register)(0x2B, (uint32_t)x);  // VSTOP
+          }
+
+  # Encoder Configuration
+  - platform: template
+    name: "TMC Encoder Constant"
+    id: tmc_encoder_const
+    icon: "mdi:rotate-right"
+    entity_category: config
+    min_value: -2147483648
+    max_value: 2147483647
+    step: 1000
+    initial_value: 65536
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          if (id(tmc_driver_initialized) && id(tmc_encoder_enabled)) {
+            id(tmc_write_register)(0x3A, (uint32_t)x);  // ENC_CONST
+          }
+
 # ============================================
 # Fonts with Icon Support
 # ============================================
@@ -1499,4 +2555,48 @@ globals:
   - id: tmc_target_position
     type: int32_t
     restore_value: false
+    initial_value: "0"
+  - id: tmc_microsteps
+    type: uint16_t
+    restore_value: true
+    initial_value: "256"
+  - id: tmc_stallguard_enabled
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: tmc_coolstep_enabled
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: tmc_dcstep_enabled
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: tmc_encoder_enabled
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: tmc_is_homing
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: tmc_is_homed
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: tmc_stall_count
+    type: int
+    restore_value: false
+    initial_value: "0"
+  - id: tmc_short_count
+    type: int
+    restore_value: false
+    initial_value: "0"
+  - id: tmc_overtemp_count
+    type: int
+    restore_value: false
+    initial_value: "0"
+  - id: tmc_sgt_value
+    type: int8_t
+    restore_value: true
     initial_value: "0"
